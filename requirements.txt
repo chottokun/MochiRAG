@@ -1,0 +1,15 @@
+fastapi[all]
+pydantic
+passlib[bcrypt]
+python-jose[cryptography]
+langchain
+langchain-community
+langchain-core
+langchain-ollama
+sentence-transformers
+chromadb
+unstructured
+markdown
+pypdf
+reportlab
+requests
