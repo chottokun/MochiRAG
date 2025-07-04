@@ -13,3 +13,5 @@ markdown
 pypdf
 reportlab
 requests
+pytest
+httpx
