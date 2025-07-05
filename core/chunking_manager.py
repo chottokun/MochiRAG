@@ -113,64 +113,88 @@ class ChunkingManager:
 
     def _load_strategies_from_config(self, config_path: Optional[str] = None):
         try:
-            config = load_strategy_config() # config_loaderからロード
+            config = load_strategy_config()
         except StrategyConfigError as e:
-            logger.error(f"Failed to load chunking strategy configuration: {e}. No strategies will be available.", exc_info=True)
+            logger.error(f"ChunkingManager: Failed to load strategy configuration: {e}. No strategies will be available.", exc_info=True)
             return
 
-        chunking_config = config.get("chunking_strategies", {})
+        chunking_config = config.get("chunking_strategies")
+        if not isinstance(chunking_config, dict):
+            logger.warning("ChunkingManager: 'chunking_strategies' section not found or invalid in config. No strategies loaded.")
+            return
+
         self.default_strategy_name = chunking_config.get("default")
+        available_configs = chunking_config.get("available")
 
-        for strat_config in chunking_config.get("available", []):
-            name = strat_config.get("name")
-            type = strat_config.get("type")
-            params = strat_config.get("params", {})
+        if not isinstance(available_configs, list):
+            logger.warning("ChunkingManager: 'chunking_strategies.available' section not found or not a list. No strategies loaded.")
+            return
 
-            if not all([name, type]):
-                logger.warning(f"Skipping incomplete chunking strategy config: {strat_config}")
+        for strat_config in available_configs:
+            if not isinstance(strat_config, dict):
+                logger.warning(f"ChunkingManager: Skipping invalid strategy config item (not a dict): {strat_config}")
                 continue
 
+            name = strat_config.get("name")
+            strat_type = strat_config.get("type") # 'type' を 'strat_type' に
+
+            if not all([name, strat_type]): # paramsはオプションなのでチェックしない
+                logger.warning(f"ChunkingManager: Skipping incomplete chunking strategy config: {strat_config} (missing name or type).")
+                continue
+
+            params = strat_config.get("params", {}) # paramsがなくても空のdictを渡す
             strategy_instance: Optional[ChunkingStrategy] = None
             try:
-                if type == "recursive_text_splitter":
+                if strat_type == "recursive_text_splitter":
                     strategy_instance = RecursiveTextSplitterChunking(
                         chunk_size=params.get("chunk_size", DEFAULT_CHUNK_SIZE),
                         chunk_overlap=params.get("chunk_overlap", DEFAULT_CHUNK_OVERLAP)
                     )
-                elif type == "semantic_chunker":
+                elif strat_type == "semantic_chunker":
                     embedding_strategy_ref = strat_config.get("embedding_strategy_ref")
                     if not embedding_strategy_ref:
-                        logger.warning(f"SemanticChunker strategy '{name}' requires 'embedding_strategy_ref'. Skipping.")
+                        logger.warning(f"ChunkingManager: SemanticChunker strategy '{name}' requires 'embedding_strategy_ref'. Skipping.")
                         continue
-                    if not embedding_manager: # embedding_managerがNoneの場合のフォールバック
-                        logger.error("EmbeddingManager is not available for SemanticChunker. Skipping.")
+                    if not embedding_manager:
+                        logger.error("ChunkingManager: EmbeddingManager is not available for SemanticChunker. Skipping.")
                         continue
                     try:
                         embedding_model_instance = embedding_manager.get_embedding_model(embedding_strategy_ref)
+                        # SemanticChunkerが受け付けるパラメータを明示的に指定
+                        semantic_init_params = {}
+                        if "breakpoint_threshold_type" in params:
+                            semantic_init_params["breakpoint_threshold_type"] = params["breakpoint_threshold_type"]
+                        # 他にSemanticChunkerが受け付けるパラメータがあればここに追加
+                        # 例: if "add_start_index" in params:
+                        #         semantic_init_params["add_start_index"] = params["add_start_index"]
+
                         strategy_instance = SemanticChunkingStrategy(
                             embedding_model_instance=embedding_model_instance,
-                            breakpoint_threshold_type=params.get("breakpoint_threshold_type", "percentile"),
-                            **params.get("additional_params", {}) # SemanticChunkerの他のパラメータ
+                            **semantic_init_params # フィルタリングされたパラメータのみを渡す
                         )
                     except Exception as emb_e:
-                        logger.error(f"Failed to get embedding model for SemanticChunker '{name}': {emb_e}", exc_info=True)
+                        logger.error(f"ChunkingManager: Failed to get embedding model or init SemanticChunker for '{name}': {emb_e}", exc_info=True)
                         continue
                 else:
-                    logger.warning(f"Unsupported chunking strategy type: {type} for strategy '{name}'")
+                    logger.warning(f"ChunkingManager: Unsupported chunking strategy type: {strat_type} for strategy '{name}'")
                     continue
 
                 if strategy_instance:
-                    self.strategies[name] = strategy_instance # 設定ファイルのnameをキーとして登録
-                    logger.info(f"Successfully registered chunking strategy: {name}")
+                    self.strategies[name] = strategy_instance
+                    logger.info(f"ChunkingManager: Successfully registered chunking strategy: {name}")
 
             except Exception as e:
-                logger.error(f"Failed to initialize or register chunking strategy '{name}': {e}", exc_info=True)
+                logger.error(f"ChunkingManager: Failed to initialize or register chunking strategy '{name}': {e}", exc_info=True)
 
         if self.default_strategy_name and self.default_strategy_name not in self.strategies:
-            logger.warning(f"Default chunking strategy '{self.default_strategy_name}' not found. Manager might not function correctly.")
-        elif not self.default_strategy_name and self.strategies:
+            logger.warning(f"ChunkingManager: Default chunking strategy '{self.default_strategy_name}' not found. Default will be unset.")
+            self.default_strategy_name = None
+
+        if not self.default_strategy_name and self.strategies:
             self.default_strategy_name = list(self.strategies.keys())[0]
-            logger.info(f"No default chunking strategy specified. Using first available: '{self.default_strategy_name}'")
+            logger.info(f"ChunkingManager: No valid default chunking strategy specified. Using first available: '{self.default_strategy_name}'")
+        elif not self.strategies:
+            logger.warning("ChunkingManager: No chunking strategies were loaded or registered.")
 
 
     def get_strategy(self, name: Optional[str] = None, params: Optional[Dict[str, Any]] = None) -> ChunkingStrategy:

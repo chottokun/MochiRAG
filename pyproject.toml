@@ -35,7 +35,8 @@ dependencies = [
     "sentence-transformers",
     "chromadb",
     "unstructured",
-    "PyYAML", # Added PyYAML for reading config files
+    "PyYAML",
+    "langchain-experimental", # Added langchain-experimental
     "markdown",
     "pypdf",
     "reportlab",

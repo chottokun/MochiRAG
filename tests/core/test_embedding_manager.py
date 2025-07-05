@@ -153,12 +153,36 @@ def test_embedding_manager_missing_fields_in_config(mock_load_config, caplog, mo
     assert "missing_fields_strat" not in manager.get_available_strategies()
 
 
-def test_embedding_manager_get_non_existent_strategy(mock_load_config, mock_sentence_transformer_embedding):
+def test_embedding_manager_get_non_existent_strategy(mock_load_config, mock_sentence_transformer_embedding, caplog):
     """存在しない戦略名でget_strategyを呼んだ場合にValueErrorが発生するか"""
     mock_load_config(SAMPLE_CONFIG_VALID)
     manager = EmbeddingManager()
-    with pytest.raises(ValueError, match="Embedding strategy 'non_existent_strategy_123' not found"):
-        manager.get_strategy("non_existent_strategy_123")
+
+    # 存在しない戦略名を指定
+    non_existent_name = "non_existent_strategy_123"
+    with pytest.raises(ValueError, match=f"EmbeddingManager: Embedding strategy '{non_existent_name}' not found."):
+        manager.get_strategy(non_existent_name)
+
+    # ログにエラーメッセージが含まれていることも確認（フォールバックしない場合）
+    # manager.get_strategy のエラーメッセージがログに出力されることを期待
+    # ただし、caplog は manager の初期化時のログも含むので注意
+    # より厳密には、get_strategy呼び出し前後でログをキャプチャするか、
+    # エラーメッセージがログに出ることを期待するなら、そのログレベルを確認する。
+    # ここでは、ValueError が発生することを確認できれば十分とする。
+
+    # デフォルト戦略も存在しないケース (例: 設定ファイルが空だった場合)
+    caplog.clear()
+    mock_load_config({"embedding_strategies": {"available": []}}) # 空の設定
+    manager_no_strat = EmbeddingManager()
+    assert not manager_no_strat.get_available_strategies()
+    assert manager_no_strat.default_strategy_name is None
+    with pytest.raises(StrategyConfigError, match="EmbeddingManager: No embedding strategy name provided and no default strategy is configured or available."):
+        manager_no_strat.get_strategy() # 名前なし（デフォルト期待）でエラー
+    with pytest.raises(StrategyConfigError, match="EmbeddingManager: No embedding strategy name provided and no default strategy is configured or available."):
+        manager_no_strat.get_strategy(None) # 明示的にNoneでもエラー
+    with pytest.raises(ValueError, match="EmbeddingManager: Embedding strategy 'any_name' not found."):
+        manager_no_strat.get_strategy("any_name")
+
 
 def test_embedding_manager_config_file_not_found(monkeypatch, caplog):
     """設定ファイルが見つからない場合にエラーを記録するか"""

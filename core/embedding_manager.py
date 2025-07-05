@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List, Any
+from typing import List, Any, Optional # Optional を追加
 from langchain_core.embeddings import Embeddings
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_ollama import OllamaEmbeddings # OllamaEmbeddingsを正式にインポート
@@ -92,81 +92,83 @@ class EmbeddingManager:
 
     def _load_strategies_from_config(self, config_path: Optional[str] = None):
         try:
-            # config_loader.py がグローバルな CONFIG_FILE_PATH を持つので、引数は基本不要
-            # テスト用に config_path を渡せるようにしておくのは良いプラクティス
-            # このローダーは dict を返す
-            if config_path: # テスト用など、特定のコンフィグファイルを指したい場合
-                from core.config_loader import load_strategy_config as load_specific_config, CONFIG_FILE_PATH as global_path
-                original_path = global_path
-                #一時的に差し替え
-                # core.config_loader.CONFIG_FILE_PATH = Path(config_path)
-                # config = load_specific_config()
-                # core.config_loader.CONFIG_FILE_PATH = original_path #元に戻す
-                # ちょっとトリッキーなので、素直にローダーに関数パスを渡すか、config_pathを直接使う
-                # ここでは簡単化のため、config_pathは無視し、常にグローバルパスから読む
-                # ただし、テスト容易性を考えると、設定dictを直接渡せるコンストラクタが良い
-                pass
-
             config = load_strategy_config()
         except StrategyConfigError as e:
-            logger.error(f"Failed to load embedding strategy configuration: {e}. No strategies will be available.", exc_info=True)
+            logger.error(f"EmbeddingManager: Failed to load strategy configuration: {e}. No strategies will be available.", exc_info=True)
+            return # 設定が読めなければ戦略は空のまま
+
+        embedding_config = config.get("embedding_strategies")
+        if not isinstance(embedding_config, dict):
+            logger.warning("EmbeddingManager: 'embedding_strategies' section not found or invalid in config. No strategies loaded.")
             return
 
-        embedding_config = config.get("embedding_strategies", {})
         self.default_strategy_name = embedding_config.get("default")
+        available_configs = embedding_config.get("available")
 
-        for strat_config in embedding_config.get("available", []):
+        if not isinstance(available_configs, list):
+            logger.warning("EmbeddingManager: 'embedding_strategies.available' section not found or not a list. No strategies loaded.")
+            return
+
+        for strat_config in available_configs:
+            if not isinstance(strat_config, dict):
+                logger.warning(f"EmbeddingManager: Skipping invalid strategy config item (not a dict): {strat_config}")
+                continue
+
             name = strat_config.get("name")
-            type = strat_config.get("type")
+            strat_type = strat_config.get("type") # 'type' を 'strat_type' に変更してPythonの予約語と衝突回避
             model_name = strat_config.get("model_name")
 
-            if not all([name, type, model_name]):
-                logger.warning(f"Skipping incomplete embedding strategy config: {strat_config}")
+            if not all([name, strat_type, model_name]):
+                logger.warning(f"EmbeddingManager: Skipping incomplete embedding strategy config: {strat_config} (missing name, type, or model_name).")
                 continue
 
             strategy_instance: Optional[EmbeddingStrategy] = None
             try:
-                if type == "sentence_transformer":
-                    strategy_instance = SentenceTransformerEmbedding(model_name=model_name, **strat_config.get("params", {}))
-                elif type == "ollama_embedding": # 設定ファイルと合わせる
+                params = strat_config.get("params", {})
+                if strat_type == "sentence_transformer":
+                    strategy_instance = SentenceTransformerEmbedding(model_name=model_name, **params)
+                elif strat_type == "ollama_embedding":
                     strategy_instance = OllamaEmbeddingStrategy(
                         model_name=model_name,
-                        base_url=strat_config.get("base_url"), # Optional
-                        **strat_config.get("params", {})
+                        base_url=strat_config.get("base_url"), # configファイルから直接取得
+                        **params
                     )
                 else:
-                    logger.warning(f"Unsupported embedding strategy type: {type} for strategy '{name}'")
+                    logger.warning(f"EmbeddingManager: Unsupported embedding strategy type: {strat_type} for strategy '{name}'")
                     continue
 
                 if strategy_instance:
-                    # マネージャーに登録するキーは設定ファイルの `name` を使う
                     self.strategies[name] = strategy_instance
-                    logger.info(f"Successfully registered embedding strategy: {name}")
+                    logger.info(f"EmbeddingManager: Successfully registered embedding strategy: {name}")
 
             except Exception as e:
-                logger.error(f"Failed to initialize or register embedding strategy '{name}': {e}", exc_info=True)
+                logger.error(f"EmbeddingManager: Failed to initialize or register embedding strategy '{name}': {e}", exc_info=True)
 
         if self.default_strategy_name and self.default_strategy_name not in self.strategies:
-            logger.warning(f"Default embedding strategy '{self.default_strategy_name}' not found in available strategies. Manager might not function correctly.")
-        elif not self.default_strategy_name and self.strategies:
-            # デフォルトが指定されていなければ、利用可能な最初のものをデフォルトにする（フォールバック）
+            logger.warning(f"EmbeddingManager: Default embedding strategy '{self.default_strategy_name}' not found in available strategies. Default will be unset.")
+            self.default_strategy_name = None # 無効なデフォルトはクリア
+
+        if not self.default_strategy_name and self.strategies:
+            # 利用可能な戦略があれば、最初のものをデフォルトにする
             self.default_strategy_name = list(self.strategies.keys())[0]
-            logger.info(f"No default embedding strategy specified. Using first available: '{self.default_strategy_name}'")
+            logger.info(f"EmbeddingManager: No valid default embedding strategy specified. Using first available: '{self.default_strategy_name}'")
+        elif not self.strategies:
+            logger.warning("EmbeddingManager: No embedding strategies were loaded or registered.")
 
 
     def get_strategy(self, name: Optional[str] = None) -> EmbeddingStrategy:
         target_name = name if name else self.default_strategy_name
         if not target_name:
-            raise ValueError("No embedding strategy name provided and no default strategy is set.")
+            # このケースは、設定ファイルが全くないか、embedding_strategiesセクションがない場合に発生しうる
+            raise StrategyConfigError("EmbeddingManager: No embedding strategy name provided and no default strategy is configured or available.")
 
         strategy = self.strategies.get(target_name)
         if not strategy:
-            logger.error(f"Embedding strategy '{target_name}' not found. Available: {list(self.strategies.keys())}")
-            # フォールバックとして、もしデフォルト名が設定されていてそれが存在すればそれを返す
-            if self.default_strategy_name and self.default_strategy_name in self.strategies:
-                logger.warning(f"Falling back to default strategy: {self.default_strategy_name}")
-                return self.strategies[self.default_strategy_name]
-            raise ValueError(f"Embedding strategy '{target_name}' not found.")
+            # default_strategy_name が設定されていても、その戦略がロードに失敗している場合など
+            available_strats = list(self.strategies.keys())
+            err_msg = f"EmbeddingManager: Embedding strategy '{target_name}' not found. Available strategies: {available_strats if available_strats else 'None'}."
+            logger.error(err_msg)
+            raise ValueError(err_msg)
         return strategy
 
     def get_available_strategies(self) -> List[str]:

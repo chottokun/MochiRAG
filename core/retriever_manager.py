@@ -1,5 +1,6 @@
 import logging
-from typing import List, Optional, Dict, Any, Literal # Literalをインポート
+from typing import List, Optional, Dict, Any, Literal
+from abc import ABC, abstractmethod # ABCとabstractmethodをインポート
 
 from langchain_core.retrievers import BaseRetriever
 # from langchain_core.embeddings import Embeddings # RetrieverManagerでは直接使わない想定
@@ -363,55 +364,85 @@ class RetrieverManager:
         try:
             config = load_strategy_config()
         except StrategyConfigError as e:
-            logger.error(f"Failed to load RAG search strategy configuration: {e}.", exc_info=True)
+            logger.error(f"RetrieverManager: Failed to load strategy configuration: {e}. No strategies will be available.", exc_info=True)
             return
 
-        rag_search_config = config.get("rag_search_strategies", {})
-        self.default_strategy_name = rag_search_config.get("default")
+        rag_search_config = config.get("rag_search_strategies")
+        if not isinstance(rag_search_config, dict):
+            logger.warning("RetrieverManager: 'rag_search_strategies' section not found or invalid in config. No strategies loaded.")
+            return
 
-        for strat_conf in rag_search_config.get("available", []):
+        self.default_strategy_name = rag_search_config.get("default")
+        available_configs = rag_search_config.get("available")
+
+        if not isinstance(available_configs, list):
+            logger.warning("RetrieverManager: 'rag_search_strategies.available' section not found or not a list. No strategies loaded.")
+            return
+
+        for strat_conf in available_configs:
+            if not isinstance(strat_conf, dict):
+                logger.warning(f"RetrieverManager: Skipping invalid RAG search strategy config item (not a dict): {strat_conf}")
+                continue
+
             name = strat_conf.get("name")
-            if not name:
-                logger.warning(f"Skipping RAG search strategy with no name: {strat_conf}")
+            # type フィールドは config/strategies.yaml には追加したが、RetrieverManagerでは現状 name で分岐している
+            # 将来的には type フィールドを見て動的にクラスを選択する方がより柔軟
+            # strat_type = strat_conf.get("type")
+
+            if not name: # strat_type も必須にするなら all([name, strat_type])
+                logger.warning(f"RetrieverManager: Skipping RAG search strategy with no name: {strat_conf}")
+                continue
+
+
+            strat_type = strat_conf.get("type") # 設定ファイルからtypeを取得
+            if not strat_type:
+                logger.warning(f"RetrieverManager: RAG search strategy '{name}' has no 'type' defined. Skipping.")
                 continue
 
             strategy_instance: Optional[RetrieverStrategyInterface] = None
-            if name == "basic":
-                strategy_instance = BasicRetrieverStrategy()
-            elif name == "multi_query":
-                strategy_instance = MultiQueryRetrieverStrategy()
-            elif name == "contextual_compression":
-                strategy_instance = ContextualCompressionRetrieverStrategy()
-            elif name == "parent_document":
-                strategy_instance = ParentDocumentRetrieverStrategy()
-            elif name == "deep_rag": # DeepRag戦略の登録
-                strategy_instance = DeepRagRetrieverStrategy()
-            else:
-                logger.warning(f"Unsupported RAG search strategy name: {name} from config.")
-                continue
+            try:
+                if strat_type == "basic":
+                    strategy_instance = BasicRetrieverStrategy()
+                elif strat_type == "multi_query":
+                    strategy_instance = MultiQueryRetrieverStrategy()
+                elif strat_type == "contextual_compression":
+                    strategy_instance = ContextualCompressionRetrieverStrategy()
+                elif strat_type == "parent_document":
+                    strategy_instance = ParentDocumentRetrieverStrategy()
+                elif strat_type == "deep_rag":
+                    strategy_instance = DeepRagRetrieverStrategy()
+                else:
+                    logger.warning(f"RetrieverManager: Unsupported RAG search strategy type: '{strat_type}' for strategy '{name}'.")
+                    continue
 
-            if strategy_instance:
-                self.strategies[name] = strategy_instance
-                logger.info(f"Registered RAG search strategy: {name}")
+                if strategy_instance:
+                    self.strategies[name] = strategy_instance
+                    logger.info(f"RetrieverManager: Registered RAG search strategy: {name}")
+            except Exception as e:
+                logger.error(f"RetrieverManager: Failed to initialize RAG search strategy '{name}': {e}", exc_info=True)
+
 
         if self.default_strategy_name and self.default_strategy_name not in self.strategies:
-            logger.warning(f"Default RAG search strategy '{self.default_strategy_name}' from config not found or failed to load.")
-        elif not self.default_strategy_name and self.strategies:
+            logger.warning(f"RetrieverManager: Default RAG search strategy '{self.default_strategy_name}' from config not found or failed to load. Default will be unset.")
+            self.default_strategy_name = None
+
+        if not self.default_strategy_name and self.strategies:
             self.default_strategy_name = list(self.strategies.keys())[0]
-            logger.info(f"Using first available RAG search strategy as default: '{self.default_strategy_name}'")
+            logger.info(f"RetrieverManager: No valid default RAG search strategy specified. Using first available: '{self.default_strategy_name}'")
+        elif not self.strategies:
+            logger.warning("RetrieverManager: No RAG search strategies were loaded or registered.")
 
 
     def get_retriever(
         self,
-        name: Optional[RAG_STRATEGY_TYPE] = None,
-        user_id: str,
-        embedding_strategy_name: str,
+        user_id: str,                     # 必須引数
+        embedding_strategy_name: str,   # 必須引数
+        name: Optional[RAG_STRATEGY_TYPE] = None, # デフォルト値あり
         data_source_ids: Optional[List[str]] = None,
         n_results: Optional[int] = None,
-        # DeepRag用のパラメータなどをkwargsで受け取れるようにする
         max_sub_queries: Optional[int] = None,
         n_results_per_subquery: Optional[int] = None,
-        **kwargs: Any # その他の戦略特有パラメータ
+        **kwargs: Any
     ) -> BaseRetriever:
         target_name_str = name if name else self.default_strategy_name
         if not target_name_str:

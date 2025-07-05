@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Any, Optional, Literal
+from typing import Dict, Any, Optional, Literal, List # List を追加
 
 from langchain_core.language_models import BaseLanguageModel
 from langchain_ollama import ChatOllama
@@ -36,66 +36,75 @@ class LLMManager:
             # テスト用に config_path を渡せるようにしておくのは良いプラクティス
             config = load_strategy_config()
         except StrategyConfigError as e:
-            logger.error(f"Failed to load LLM configuration: {e}. No LLMs will be available.", exc_info=True)
+            logger.error(f"LLMManager: Failed to load strategy configuration: {e}. No LLMs will be available.", exc_info=True)
             return
 
-        llm_config_section = config.get("llm_config", {})
-        self.default_provider_name = llm_config_section.get("default_provider")
+        llm_config_section = config.get("llm_config")
+        if not isinstance(llm_config_section, dict):
+            logger.warning("LLMManager: 'llm_config' section not found or invalid in config. No LLMs loaded.")
+            return
 
-        for provider_conf in llm_config_section.get("providers", []):
+        self.default_provider_name = llm_config_section.get("default_provider")
+        provider_configs = llm_config_section.get("providers")
+
+        if not isinstance(provider_configs, list):
+            logger.warning("LLMManager: 'llm_config.providers' section not found or not a list. No LLMs loaded.")
+            return
+
+        for provider_conf in provider_configs:
+            if not isinstance(provider_conf, dict):
+                logger.warning(f"LLMManager: Skipping invalid provider config item (not a dict): {provider_conf}")
+                continue
+
             name = provider_conf.get("name")
             provider_type = provider_conf.get("type")
             model_name = provider_conf.get("model")
-            params = provider_conf.get("params", {}) # temperatureなど共通パラメータ
 
             if not all([name, provider_type, model_name]):
-                logger.warning(f"Skipping incomplete LLM provider config: {provider_conf}")
+                logger.warning(f"LLMManager: Skipping incomplete LLM provider config: {provider_conf} (missing name, type, or model).")
                 continue
 
+            params = provider_conf.get("params", {})
             llm_instance: Optional[BaseLanguageModel] = None
             try:
                 if provider_type == "ollama":
-                    # temperature などの共通パラメータは **params で渡す
-                    # base_url も params に含めることができる
                     llm_instance = ChatOllama(model=model_name, **params)
-                    logger.info(f"Initialized Ollama LLM: {name} with model {model_name}")
+                    logger.info(f"LLMManager: Initialized Ollama LLM: {name} with model {model_name}")
                 # elif provider_type == "openai":
-                #     # api_key_env = provider_conf.get("api_key_env")
-                #     # api_key = os.getenv(api_key_env) if api_key_env else None
-                #     # if not api_key:
-                #     #     logger.warning(f"OpenAI API key not found for provider {name}. Skipping.")
-                #     #     continue
-                #     # llm_instance = ChatOpenAI(model_name=model_name, openai_api_key=api_key, **params)
-                #     # logger.info(f"Initialized OpenAI LLM: {name} with model {model_name}")
+                #     # ... (OpenAIの初期化ロジック) ...
                 #     pass
                 else:
-                    logger.warning(f"Unsupported LLM provider type: {provider_type} for provider '{name}'")
+                    logger.warning(f"LLMManager: Unsupported LLM provider type: {provider_type} for provider '{name}'")
                     continue
 
                 if llm_instance:
                     self.llm_providers[name] = llm_instance
             except Exception as e:
-                logger.error(f"Failed to initialize LLM provider '{name}': {e}", exc_info=True)
+                logger.error(f"LLMManager: Failed to initialize LLM provider '{name}': {e}", exc_info=True)
 
         if self.default_provider_name and self.default_provider_name not in self.llm_providers:
-            logger.warning(f"Default LLM provider '{self.default_provider_name}' not found or failed to initialize.")
-        elif not self.default_provider_name and self.llm_providers:
+            logger.warning(f"LLMManager: Default LLM provider '{self.default_provider_name}' not found or failed to initialize. Default will be unset.")
+            self.default_provider_name = None
+
+        if not self.default_provider_name and self.llm_providers:
             self.default_provider_name = list(self.llm_providers.keys())[0]
-            logger.info(f"No default LLM provider specified. Using first available: '{self.default_provider_name}'")
+            logger.info(f"LLMManager: No valid default LLM provider specified. Using first available: '{self.default_provider_name}'")
+        elif not self.llm_providers:
+            logger.warning("LLMManager: No LLM providers were loaded or registered.")
 
 
     def get_llm(self, name: Optional[str] = None) -> BaseLanguageModel:
         target_name = name if name else self.default_provider_name
         if not target_name:
-            raise ValueError("No LLM provider name specified and no default provider is set.")
+            raise StrategyConfigError("LLMManager: No LLM provider name specified and no default provider is configured or available.")
 
         llm = self.llm_providers.get(target_name)
         if not llm:
-            logger.error(f"LLM provider '{target_name}' not found. Available: {list(self.llm_providers.keys())}")
-            if self.default_provider_name and self.default_provider_name in self.llm_providers:
-                logger.warning(f"Falling back to default LLM provider: {self.default_provider_name}")
-                return self.llm_providers[self.default_provider_name]
-            raise ValueError(f"LLM provider '{target_name}' not found.")
+            available_providers = list(self.llm_providers.keys())
+            err_msg = f"LLMManager: LLM provider '{target_name}' not found. Available providers: {available_providers if available_providers else 'None'}."
+            logger.error(err_msg)
+            # デフォルトへのフォールバックは _load_llm_config で考慮済みのため、ここでは直接エラー
+            raise ValueError(err_msg)
         return llm
 
     def get_available_providers(self) -> List[str]:
@@ -104,11 +113,10 @@ class LLMManager:
 # グローバルなLLMManagerインスタンス
 llm_manager = LLMManager()
 
-# core.rag_chain.py で使用していたグローバルな `llm` 変数を置き換える
-# ただし、直接置き換えるのではなく、rag_chain.py 側で llm_manager.get_llm() を呼ぶようにする
-# ここでは、下位互換性や他のモジュールでの直接参照のために一時的に設定するかもしれないが、
-# 基本的には llm_manager を介したアクセスを推奨
-llm = llm_manager.get_llm() # デフォルトプロバイダーのLLMを取得
+# core.rag_chain.py などで直接 llm インスタンスを参照するのではなく、
+# llm_manager.get_llm() を使用することを推奨するため、
+# モジュールレベルでのグローバル `llm` 変数の設定は削除またはコメントアウトします。
+# llm = llm_manager.get_llm() # デフォルトプロバイダーのLLMを取得
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)

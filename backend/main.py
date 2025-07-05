@@ -133,8 +133,16 @@ async def upload_document(
     temp_file_path = TMP_UPLOAD_DIR / f"{uuid.uuid4().hex}_{original_filename}"
 
     # 戦略パラメータの処理
-    emb_strategy_name = embedding_strategy or embedding_manager.get_available_strategies()[0]
-    chk_strategy_name = chunking_strategy or chunking_manager.get_available_strategies()[0]
+    emb_strategy_name = embedding_strategy or embedding_manager.default_strategy_name
+    if not emb_strategy_name:
+        # EmbeddingManagerが利用可能な戦略をロードできなかった、またはデフォルトが設定できなかった場合
+        # （通常は EmbeddingManager の初期化時に警告ログが出ているはず）
+        raise HTTPException(status_code=503, detail="Service Unavailable: Embedding strategies not properly configured.")
+
+    chk_strategy_name = chunking_strategy or chunking_manager.default_strategy_name
+    if not chk_strategy_name:
+        # ChunkingManagerが利用可能な戦略をロードできなかった、またはデフォルトが設定できなかった場合
+        raise HTTPException(status_code=503, detail="Service Unavailable: Chunking strategies not properly configured.")
 
     chk_params: Optional[Dict[str, Any]] = None
     if chunking_params_json:

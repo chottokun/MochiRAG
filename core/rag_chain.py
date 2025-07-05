@@ -38,21 +38,10 @@ except ImportError as e:
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# LLMインスタンスはLLMManagerから取得する
-llm = llm_manager.get_llm() # デフォルトLLMを取得
+# LLMインスタンスはLLMManagerから必要に応じて取得する
+# llm = llm_manager.get_llm() # モジュールロード時のグローバルllm取得は削除
 
 # RAG_STRATEGY_TYPE と AVAILABLE_RAG_STRATEGIES は retriever_manager からインポート済
-
-# --- Prompt Templates ---
-# (変更なし)
-DEFAULT_RAG_PROMPT_TEMPLATE_STR = """
-    "basic",
-    "parent_document",
-    "multi_query",
-    "contextual_compression"
-]
-AVAILABLE_RAG_STRATEGIES = list(RAG_STRATEGY_TYPE.__args__)
-
 
 # --- Prompt Templates ---
 DEFAULT_RAG_PROMPT_TEMPLATE_STR = """
@@ -156,7 +145,7 @@ def get_rag_response(
         )
         | RunnableLambda(lambda x: {"context": x["context"], "question": x["question"]["question"]}) # Ensure correct dict keys for prompt
         | default_rag_prompt
-        | llm
+        | llm_manager.get_llm() # llm_managerから直接取得
         | StrOutputParser()
     )
 

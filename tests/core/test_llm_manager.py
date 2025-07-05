@@ -149,15 +149,26 @@ def test_llm_manager_get_llm_instance(mock_load_config_llm, mock_chat_ollama):
 def test_llm_manager_invalid_type_in_config(mock_load_config_llm, caplog, mock_chat_ollama):
     mock_load_config_llm(SAMPLE_LLM_CONFIG_INVALID_TYPE)
     manager = LLMManager()
-    assert "Unsupported LLM provider type: non_existent_llm_type" in caplog.text
+    assert "Unsupported LLM provider type: non_existent_llm_type" in caplog.text # ログメッセージの確認
     assert "invalid_llm_type" not in manager.get_available_providers()
 
 
-def test_llm_manager_get_non_existent_provider(mock_load_config_llm, mock_chat_ollama):
+def test_llm_manager_get_non_existent_provider(mock_load_config_llm, mock_chat_ollama, caplog):
     mock_load_config_llm(SAMPLE_LLM_CONFIG_VALID)
     manager = LLMManager()
-    with pytest.raises(ValueError, match="LLM provider 'non_existent_provider_123' not found"):
-        manager.get_llm("non_existent_provider_123")
+    non_existent_name = "non_existent_provider_123"
+    with pytest.raises(ValueError, match=f"LLMManager: LLM provider '{non_existent_name}' not found."):
+        manager.get_llm(non_existent_name)
+
+    caplog.clear()
+    mock_load_config_llm({"llm_config": {"providers": []}}) # 空のプロバイダーリスト
+    manager_no_providers = LLMManager()
+    assert not manager_no_providers.get_available_providers()
+    assert manager_no_providers.default_provider_name is None
+    with pytest.raises(StrategyConfigError, match="LLMManager: No LLM provider name specified and no default provider is configured or available."):
+        manager_no_providers.get_llm()
+    with pytest.raises(ValueError, match="LLMManager: LLM provider 'any_name' not found."):
+        manager_no_providers.get_llm("any_name")
 
 
 def test_llm_manager_config_file_not_found(monkeypatch, caplog):
@@ -166,27 +177,38 @@ def test_llm_manager_config_file_not_found(monkeypatch, caplog):
     monkeypatch.setattr("core.llm_manager.load_strategy_config", mock_load_raises_error)
 
     manager = LLMManager()
-    assert "Failed to load LLM configuration: LLM Config file not found for test" in caplog.text
+    assert "LLMManager: Failed to load strategy configuration: LLM Config file not found for test" in caplog.text # Manager名をログに追加
     assert not manager.get_available_providers()
     assert manager.default_provider_name is None
 
-# グローバルなllmインスタンスが正しく設定されるかのテスト
-def test_global_llm_instance_after_manager_init(mock_load_config_llm, mock_chat_ollama):
+# グローバルなllmインスタンスの代わりに、manager経由での取得をテスト
+def test_get_llm_via_manager_instance(mock_load_config_llm, mock_chat_ollama):
     mock_load_config_llm(SAMPLE_LLM_CONFIG_VALID)
-    # LLMManagerのインスタンス化時にグローバルなllmも設定されるはず
-    # ただし、モジュールレベルのllmはインポート時に評価されるため、
-    # managerの初期化後に再度llmを参照する形でテストする
-    from core import llm_manager as lm_module
-    lm_module.llm_manager = LLMManager() # 再初期化
 
-    assert lm_module.llm is not None
-    assert isinstance(lm_module.llm, BaseLanguageModel)
-    # デフォルトプロバイダ ("ollama_default") のモデルが設定されるはず
-    # mock_chat_ollama が最後に呼ばれた際の model を確認
-    # ただし、mock_chat_ollama はクラスのモックなので、インスタンスの属性確認は難しい
-    # ここでは、llm_manager.get_llm() の結果と一致するかで代用
-    assert lm_module.llm == lm_module.llm_manager.get_llm(lm_module.llm_manager.default_provider_name)
+    # core.llm_manager を再インポートするかのように、新しいインスタンスでテストする
+    # ただし、グローバルな llm_manager インスタンスはモジュールロード時に作られるので、
+    # それを直接テストする（再代入はpytestの挙動を複雑にする可能性がある）
+    from core.llm_manager import llm_manager as global_llm_manager_instance
+    # ここで global_llm_manager_instance はモックされた設定で再初期化されている想定
+    # （mock_load_config_llmがグローバルなload_strategy_configをモックしているため）
+    # 必要であれば、LLMManager()を直接呼び出して新しいインスタンスを作る
+    manager_to_test = LLMManager() # これでモックされたconfigが使われる
 
-    # もしグローバルllmがモックされたChatOllamaインスタンスを指しているなら
-    # そのinvokeもモックされているはず
-    assert lm_module.llm.invoke("test global") == "Mocked Ollama Response"
+    assert manager_to_test.default_provider_name == "ollama_default"
+    default_llm = manager_to_test.get_llm() # デフォルトプロバイダのLLMを取得
+
+    assert default_llm is not None
+    assert isinstance(default_llm, BaseLanguageModel)
+
+    # ChatOllamaの呼び出しが期待通りか（model名で判断）
+    # mock_chat_ollama はクラスのモックなので、最後に呼ばれた際の引数を見る
+    # manager_to_test の初期化で複数回呼ばれる可能性があるため、
+    # default_provider_name に紐づく呼び出しを特定するのは難しい。
+    # ここでは、get_llm() で取得したインスタンスが期待する型であること、
+    # そしてその invoke がモックされていることを確認する。
+    assert default_llm.invoke("test global") == "Mocked Ollama Response"
+
+    # 特定のプロバイダーも取得できるか
+    custom_llm = manager_to_test.get_llm("ollama_custom_url")
+    assert isinstance(custom_llm, BaseLanguageModel)
+    assert custom_llm.invoke("test custom") == "Mocked Ollama Response"
