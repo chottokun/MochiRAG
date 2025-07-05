@@ -31,10 +31,11 @@ dependencies = [
     "langchain-core",
     "langchain-ollama",
     "langchain-huggingface",
-    "langchain-chroma", # Added langchain-chroma
+    "langchain-chroma",
     "sentence-transformers",
     "chromadb",
     "unstructured",
+    "PyYAML", # Added PyYAML for reading config files
     "markdown",
     "pypdf",
     "reportlab",

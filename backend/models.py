@@ -35,6 +35,15 @@ class DataSourceMeta(BaseModel):
     uploaded_at: str # ISO format timestamp
     chunk_count: Optional[int] = None
     additional_info: Optional[Dict[str, Any]] = None
+    embedding_strategy_used: Optional[str] = None # 追加: 使用されたエンベディング戦略
+    chunking_strategy_used: Optional[str] = None # 追加: 使用されたチャンキング戦略
+    chunking_config_used: Optional[Dict[str, Any]] = None # 追加: 使用されたチャンキング設定
+
+class DocumentUploadRequest(BaseModel): # 新規: ドキュメントアップロード時のリクエストボディ
+    embedding_strategy: Optional[str] = None # 指定がなければデフォルトを使用
+    chunking_strategy: Optional[str] = None  # 指定がなければデフォルトを使用
+    chunking_params: Optional[Dict[str, Any]] = None # チャンキング戦略のパラメータ (例: chunk_size)
+
 
 class ChatQueryRequest(BaseModel):
     question: str

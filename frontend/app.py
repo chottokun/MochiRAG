@@ -23,11 +23,14 @@ except ImportError:
         sys.path.insert(0, str(project_root))
     try:
         from core.rag_chain import AVAILABLE_RAG_STRATEGIES
+        from core.embedding_manager import embedding_manager # EmbeddingManagerのインスタンス
+        from core.chunking_manager import chunking_manager # ChunkingManagerのインスタンス
     except ImportError:
-        # If still not found, use a default list and show a warning.
-        # This is a fallback for environments where imports are tricky.
-        AVAILABLE_RAG_STRATEGIES = ["basic"] # Default to only "basic"
-        st.warning("Could not load RAG strategies from core module. Defaulting to 'basic'. Ensure PYTHONPATH is set correctly if more strategies are expected.")
+        AVAILABLE_RAG_STRATEGIES = ["basic"]
+        st.warning("Could not load RAG, Embedding, or Chunking strategies from core modules. Defaulting to 'basic'. Ensure PYTHONPATH is set correctly.")
+        # マネージャーがロードできない場合のフォールバック
+        embedding_manager = None
+        chunking_manager = None
 
 
 # --- Configuration ---
@@ -263,23 +266,109 @@ else:
         st.title("Document Management")
         st.write("アップロードしたドキュメントはRAG検索対象になります。TXT/MD/PDF対応。")
 
+        # --- Vector Store Strategy Selection ---
+        st.subheader("Vector Store Processing Strategies")
+
+        available_embedding_strategies = ["default"]
+        if embedding_manager:
+            try:
+                available_embedding_strategies = embedding_manager.get_available_strategies()
+            except Exception as e:
+                st.error(f"Failed to load embedding strategies: {e}")
+
+        selected_embedding_strategy = st.selectbox(
+            "Choose Embedding Strategy:",
+            options=available_embedding_strategies,
+            index=0,
+            key="embedding_strategy_selector"
+        )
+
+        available_chunking_strategies = ["default"]
+        if chunking_manager:
+            try:
+                available_chunking_strategies = chunking_manager.get_available_strategies()
+            except Exception as e:
+                st.error(f"Failed to load chunking strategies: {e}")
+
+        selected_chunking_strategy = st.selectbox(
+            "Choose Chunking Strategy:",
+            options=available_chunking_strategies,
+            index=0,
+            key="chunking_strategy_selector"
+        )
+
+        # チャンキングパラメータ入力 (例: chunk_size)
+        # chunk_params_json = st.text_input("Chunking Parameters (JSON string, optional)", value='{"chunk_size": 1000, "chunk_overlap": 200}')
+        # よりユーザーフレンドリーなUIも検討可能 (例: 数値入力フィールド)
+        custom_chunk_size = st.number_input("Chunk Size (for recursive)", value=1000, min_value=100, step=50, key="chunk_size_input")
+        custom_chunk_overlap = st.number_input("Chunk Overlap (for recursive)", value=200, min_value=0, step=20, key="chunk_overlap_input")
+
+
         # --- ドキュメントアップロード ---
+        st.subheader("Upload New Document")
         with st.form("upload_form", clear_on_submit=True):
-            uploaded_files = st.file_uploader("Upload documents", type=["txt", "md", "pdf"], accept_multiple_files=True)
-            upload_submit = st.form_submit_button("Upload")
-        if upload_submit and uploaded_files:
-            for uploaded_file in uploaded_files:
-                try:
-                    headers = {"Authorization": f"Bearer {st.session_state.token}"}
-                    files = {"file": (uploaded_file.name, uploaded_file, uploaded_file.type)}
-                    resp = requests.post(f"{BACKEND_URL}/documents/upload/", headers=headers, files=files, timeout=120)
-                    if resp.status_code == 200:
-                        st.success(f"Upload succeeded: {uploaded_file.name}")
-                    else:
-                        st.error(f"Upload failed: {resp.text}")
-                except Exception as e:
-                    st.error(f"Upload error: {e}")
-            st.session_state.chat_loading = False  # ← 追加: アップロード後にchat_loadingを必ずFalseに
+            uploaded_file = st.file_uploader("Upload a document", type=["txt", "md", "pdf"], accept_multiple_files=False) # 一旦単一ファイルに
+            upload_submit = st.form_submit_button("Upload Document")
+
+        if upload_submit and uploaded_file:
+            # 選択された戦略とパラメータを準備
+            upload_request_data = {
+                "embedding_strategy": selected_embedding_strategy if selected_embedding_strategy != "default" else None,
+                "chunking_strategy": selected_chunking_strategy if selected_chunking_strategy != "default" else None,
+            }
+            # RecursiveTextSplitterの場合のパラメータ設定（他の戦略では異なるUIが必要になる可能性）
+            if selected_chunking_strategy and "recursive" in selected_chunking_strategy:
+                 upload_request_data["chunking_params"] = {
+                     "chunk_size": custom_chunk_size,
+                     "chunk_overlap": custom_chunk_overlap
+                 }
+
+            try:
+                headers = {"Authorization": f"Bearer {st.session_state.token}"}
+                # ファイルとリクエストデータを一緒に送信 (multipart/form-data)
+                # FastAPI側で Body() と File() を同時に受け取るには工夫が必要な場合がある
+                # ここでは、upload_request_data をJSON文字列としてファイルと一緒に送信する
+                files = {
+                    "file": (uploaded_file.name, uploaded_file, uploaded_file.type),
+                    # DocumentUploadRequestをJSON文字列として送信
+                    "upload_request": (None, json.dumps(upload_request_data), "application/json")
+                }
+
+                # バックエンドAPIの /documents/upload/ は DocumentUploadRequest を Body(...) で受け取る想定
+                # ファイルアップロードとJSONボディを同時に扱うには、FastAPI側で工夫が必要。
+                # 一般的なのは、JSONボディをFormデータとして送信するか、
+                # リクエストを2段階に分ける（メタ情報POST -> ファイルPUTなど）。
+                # ここでは、Body()とFile()を同時に受け付けるようにFastAPIが設定されていると仮定する。
+                # しかし、requestsライブラリでこれを単純に行うのは難しい。
+                # Bodyパラメータは通常 application/json として送られる。
+                # 解決策: FastAPIエンドポイントを修正し、戦略パラメータをフォームデータとして受け取る。
+                # または、戦略パラメータをクエリパラメータとして渡す。今回はフォームデータとして修正する想定で進める。
+
+                form_data = {
+                    'embedding_strategy': upload_request_data["embedding_strategy"],
+                    'chunking_strategy': upload_request_data["chunking_strategy"],
+                }
+                if upload_request_data.get("chunking_params"):
+                    form_data['chunking_params_json'] = json.dumps(upload_request_data["chunking_params"])
+
+
+                # `files` に `upload_request` を含めず、`data` でフォームデータを渡す
+                actual_files = {"file": (uploaded_file.name, uploaded_file, uploaded_file.type)}
+                resp = requests.post(
+                    f"{BACKEND_URL}/documents/upload/",
+                    headers=headers,
+                    files=actual_files, # ファイルのみ
+                    data=form_data,     # 戦略パラメータをフォームデータとして送信
+                    timeout=120
+                )
+
+                if resp.status_code == 200:
+                    st.success(f"Upload succeeded: {uploaded_file.name}")
+                else:
+                    st.error(f"Upload failed: {resp.status_code} - {resp.text}")
+            except Exception as e:
+                st.error(f"Upload error: {e}")
+            # st.session_state.chat_loading = False # Document Managementページなのでchat_loadingは不要
             st.rerun()
 
         # --- ドキュメント一覧表示 ---
