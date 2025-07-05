@@ -39,7 +39,9 @@ class DataSourceMeta(BaseModel):
 class ChatQueryRequest(BaseModel):
     question: str
     data_source_ids: Optional[List[str]] = None
+    rag_strategy: Optional[str] = "basic" # Default to basic strategy
 
 class ChatQueryResponse(BaseModel):
     answer: str
+    strategy_used: Optional[str] = None # To confirm which strategy was applied
     # sources: Optional[List[Dict[str, Any]]] = None # Placeholder for future

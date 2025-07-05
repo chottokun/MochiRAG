@@ -14,6 +14,19 @@ from core.vector_store import add_documents_to_vector_db, query_vector_db, delet
 
 SUPPORTED_FILE_TYPES = Literal["txt", "md", "pdf"]
 
+# Default text_splitter instance that can be imported by other modules (e.g., for ParentDocumentRetriever)
+# These are default chunk_size and chunk_overlap values.
+# The load_and_split_document function can override these if different parameters are passed to it.
+DEFAULT_CHUNK_SIZE = 1000
+DEFAULT_CHUNK_OVERLAP = 200
+
+text_splitter = RecursiveCharacterTextSplitter(
+    chunk_size=DEFAULT_CHUNK_SIZE,
+    chunk_overlap=DEFAULT_CHUNK_OVERLAP,
+    length_function=len,
+    is_separator_regex=False,
+)
+
 def load_and_split_document(
     file_path: str,
     file_type: SUPPORTED_FILE_TYPES,
@@ -39,14 +52,20 @@ def load_and_split_document(
     except Exception as e:
         raise RuntimeError(f"Error loading document {file_path} (type: {file_type}): {e}")
 
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=chunk_size,
-        chunk_overlap=chunk_overlap,
+    # Use the globally defined text_splitter, but allow overriding chunk_size and chunk_overlap if necessary
+    # For this specific function, we'll use the parameters passed to it.
+    # If rag_chain needs the *exact* instance with specific settings, this might need adjustment,
+    # or rag_chain should instantiate its own based on known settings.
+    # For now, let's assume load_and_split_document can use its own parameters for splitting.
+    # However, to make `text_splitter` importable for `ParentDocumentRetriever`,
+    # we define a default one at module level.
+    current_text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size, # Use function params
+        chunk_overlap=chunk_overlap, # Use function params
         length_function=len,
         is_separator_regex=False,
     )
-
-    split_docs = text_splitter.split_documents(loaded_documents)
+    split_docs = current_text_splitter.split_documents(loaded_documents)
     return split_docs
 
 

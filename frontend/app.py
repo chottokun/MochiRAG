@@ -2,6 +2,34 @@ import streamlit as st
 import requests
 import json # For handling potential JSON decode errors more gracefully
 
+import streamlit as st
+import requests
+import json # For handling potential JSON decode errors more gracefully
+
+# Attempt to import AVAILABLE_RAG_STRATEGIES for the dropdown
+# This requires the core module to be accessible.
+# If running Streamlit from project root, and core is in PYTHONPATH, this should work.
+try:
+    from core.rag_chain import AVAILABLE_RAG_STRATEGIES
+except ImportError:
+    # Fallback if core.rag_chain is not directly importable
+    # This might happen if Streamlit is run from the frontend directory directly
+    # or if PYTHONPATH is not set up.
+    # Add the project root to sys.path if 'core' is not found.
+    import sys
+    from pathlib import Path
+    project_root = Path(__file__).resolve().parent.parent
+    if str(project_root) not in sys.path:
+        sys.path.insert(0, str(project_root))
+    try:
+        from core.rag_chain import AVAILABLE_RAG_STRATEGIES
+    except ImportError:
+        # If still not found, use a default list and show a warning.
+        # This is a fallback for environments where imports are tricky.
+        AVAILABLE_RAG_STRATEGIES = ["basic"] # Default to only "basic"
+        st.warning("Could not load RAG strategies from core module. Defaulting to 'basic'. Ensure PYTHONPATH is set correctly if more strategies are expected.")
+
+
 # --- Configuration ---
 BACKEND_URL = "http://localhost:8000" # Ensure this matches your FastAPI backend URL
 
@@ -136,9 +164,22 @@ else:
     # Main content area based on navigation
     if st.session_state.main_app_page == "Chat":
         st.title("Chat Page")
+
+        # --- RAG Strategy Selection ---
+        st.sidebar.subheader("RAG Strategy")
+        # Use AVAILABLE_RAG_STRATEGIES imported or defaulted earlier
+        selected_strategy = st.sidebar.selectbox(
+            "Choose a RAG strategy:",
+            options=AVAILABLE_RAG_STRATEGIES,
+            index=AVAILABLE_RAG_STRATEGIES.index("basic") if "basic" in AVAILABLE_RAG_STRATEGIES else 0, # Default to basic
+            key="rag_strategy_selector"
+        )
+        st.sidebar.caption(f"Current strategy: **{selected_strategy}**")
+
+
         # --- Chat Session State ---
         if "chat_history" not in st.session_state:
-            st.session_state.chat_history = []  # List of dicts: {"role": "user"|"assistant", "content": str}
+            st.session_state.chat_history = []  # List of dicts: {"role": "user"|"assistant", "content": str, "strategy_used": Optional[str]}
         if "chat_loading" not in st.session_state:
             st.session_state.chat_loading = False
 
@@ -147,11 +188,17 @@ else:
             if msg["role"] == "user":
                 st.markdown(f"**You:** {msg['content']}")
             else:
-                st.markdown(f"<span style='color: #2b7cff'><b>AI:</b> {msg['content']}</span>", unsafe_allow_html=True)
+                ai_response_text = f"<span style='color: #2b7cff'><b>AI</b>"
+                if msg.get("strategy_used"):
+                    ai_response_text += f" (<i>{msg['strategy_used']}</i>)"
+                ai_response_text += f":</span> {msg['content']}"
+                st.markdown(ai_response_text, unsafe_allow_html=True)
+
 
         # --- Chat Input ---
         with st.form("chat_form", clear_on_submit=True):
             user_input = st.text_area("Your question", key="chat_input", height=80)
+            # selected_strategy is already available from the sidebar selectbox
             submitted = st.form_submit_button("Send", disabled=st.session_state.chat_loading)
 
         if submitted and user_input.strip():
@@ -159,20 +206,54 @@ else:
             st.session_state.chat_history.append({"role": "user", "content": user_input})
             try:
                 headers = {"Authorization": f"Bearer {st.session_state.token}"}
-                payload = {"question": user_input}
+                # Include the selected RAG strategy in the payload
+                payload = {
+                    "question": user_input,
+                    "rag_strategy": selected_strategy # Get from sidebar
+                }
+                # TODO: Add data_source_ids selection if needed in the future
+                # payload["data_source_ids"] = [...]
+
                 resp = requests.post(f"{BACKEND_URL}/chat/query/", json=payload, headers=headers, timeout=60)
+
                 if resp.status_code == 200:
-                    answer = resp.json().get("answer", "(No answer)")
-                    st.session_state.chat_history.append({"role": "assistant", "content": answer})
+                    response_data = resp.json()
+                    answer = response_data.get("answer", "(No answer received)")
+                    strategy_used = response_data.get("strategy_used", selected_strategy) # Use backend confirmed strategy
+                    st.session_state.chat_history.append({
+                        "role": "assistant",
+                        "content": answer,
+                        "strategy_used": strategy_used
+                    })
                 else:
-                    st.session_state.chat_history.append({"role": "assistant", "content": f"(Error: {resp.text})"})
-            except Exception as e:
-                st.session_state.chat_history.append({"role": "assistant", "content": f"(Error: {e})"})
-            st.session_state.chat_loading = False
-            st.rerun()
+                    error_detail = resp.text
+                    try: # Try to parse JSON for more specific error
+                        error_detail = resp.json().get("detail", resp.text)
+                    except json.JSONDecodeError:
+                        pass
+                    st.session_state.chat_history.append({
+                        "role": "assistant",
+                        "content": f"(Error: {error_detail})",
+                        "strategy_used": selected_strategy # Show strategy attempted
+                    })
+            except requests.exceptions.RequestException as e: # More specific for network/request errors
+                 st.session_state.chat_history.append({
+                    "role": "assistant",
+                    "content": f"(Request Error: {e})",
+                    "strategy_used": selected_strategy
+                })
+            except Exception as e: # General fallback
+                st.session_state.chat_history.append({
+                    "role": "assistant",
+                    "content": f"(Unexpected Error: {e})",
+                    "strategy_used": selected_strategy
+                })
+            finally:
+                st.session_state.chat_loading = False
+                st.rerun()
 
         if st.session_state.chat_loading:
-            st.info("AI is thinking...")
+            st.info(f"AI is thinking (using {selected_strategy} strategy)...")
 
         if st.button("Clear Chat History"):
             st.session_state.chat_history = []

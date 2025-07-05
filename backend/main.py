@@ -17,7 +17,7 @@ from .models import User, UserCreate, Token, UserInDB, DataSourceMeta, ChatQuery
 try:
     from core.document_processor import load_and_split_document, SUPPORTED_FILE_TYPES
     from core.vector_store import add_documents_to_vector_db
-    from core.rag_chain import get_rag_response # Added RAG function
+    from core.rag_chain import get_rag_response, RAG_STRATEGY_TYPE, AVAILABLE_RAG_STRATEGIES # Import strategy type
 except ImportError as e:
     # This provides a fallback for environments where 'core' is not directly in PYTHONPATH
     # e.g. when running 'uvicorn backend.main:app' from project root.
@@ -30,7 +30,7 @@ except ImportError as e:
     try:
         from core.document_processor import load_and_split_document, SUPPORTED_FILE_TYPES
         from core.vector_store import add_documents_to_vector_db
-        from core.rag_chain import get_rag_response # Added RAG function
+        from core.rag_chain import get_rag_response, RAG_STRATEGY_TYPE, AVAILABLE_RAG_STRATEGIES # Import strategy type
     except ImportError:
         raise ImportError(f"Could not import core modules. Ensure 'core' is in PYTHONPATH. Original error: {e}")
 
@@ -197,24 +197,28 @@ async def query_rag_chat(
 ):
     """
     Handles a chat query, retrieves context from user-specific documents,
-    and generates a response using the RAG chain.
+    and generates a response using the RAG chain with a specified strategy.
     """
     user_id_str = str(current_user.user_id) # Ensure user_id is a string
 
+    # Validate RAG strategy
+    selected_strategy = query_request.rag_strategy
+    if selected_strategy not in AVAILABLE_RAG_STRATEGIES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid RAG strategy: '{selected_strategy}'. Available strategies are: {', '.join(AVAILABLE_RAG_STRATEGIES)}"
+        )
+
     try:
         # Call the RAG processing function from core.rag_chain
-        # This function is expected to handle LLM unavailability gracefully
         answer = get_rag_response(
             user_id=user_id_str,
             question=query_request.question,
-            data_source_ids=query_request.data_source_ids
+            data_source_ids=query_request.data_source_ids,
+            rag_strategy=selected_strategy # Pass the validated strategy
         )
 
-        # If get_rag_response includes specific error messages for LLM unavailability,
-        # those will be passed through.
-        # Example: "I'm sorry, but I encountered an error..."
-
-        return ChatQueryResponse(answer=answer)
+        return ChatQueryResponse(answer=answer, strategy_used=selected_strategy)
 
     except Exception as e:
         # This is a general fallback. Ideally, specific exceptions from RAG chain

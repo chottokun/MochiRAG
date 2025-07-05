@@ -30,6 +30,8 @@ dependencies = [
     "langchain-community",
     "langchain-core",
     "langchain-ollama",
+    "langchain-huggingface",
+    "langchain-chroma", # Added langchain-chroma
     "sentence-transformers",
     "chromadb",
     "unstructured",
