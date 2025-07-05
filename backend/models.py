@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, Dict, Any, List
 import uuid
 
 class UserInDB(BaseModel):

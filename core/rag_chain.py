@@ -2,7 +2,7 @@ import logging
 from typing import List, Optional, Dict, Any
 
 # Langchain component imports
-from langchain_community.chat_models import ChatOllama
+from langchain_ollama import ChatOllama
 from langchain_core.prompts import PromptTemplate
 from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
@@ -27,10 +27,10 @@ logger = logging.getLogger(__name__)
 
 # Initialize LLM
 try:
-    llm = ChatOllama(model="llama3", temperature=0) # Using temperature=0 for more deterministic output
-    logger.info("ChatOllama LLM initialized with model 'llama3'.")
+    llm = ChatOllama(model="gemma3:4b-it-qat", temperature=0) # Using temperature=0 for more deterministic output
+    logger.info("ChatOllama LLM initialized with model 'gemma3:4b-it-qat'.")
 except Exception as e:
-    logger.error(f"Failed to initialize ChatOllama: {e}. Ensure Ollama is running and the 'llama3' model is pulled.")
+    logger.error(f"Failed to initialize ChatOllama: {e}. Ensure Ollama is running and the 'gemma3:4b-it-qat' model is pulled.")
     # Depending on the application, might want to raise or have a fallback.
     raise
 

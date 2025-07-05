@@ -136,13 +136,87 @@ else:
     # Main content area based on navigation
     if st.session_state.main_app_page == "Chat":
         st.title("Chat Page")
-        st.write("Chat interface will be here.")
-        # Placeholder for chat functionality
+        # --- Chat Session State ---
+        if "chat_history" not in st.session_state:
+            st.session_state.chat_history = []  # List of dicts: {"role": "user"|"assistant", "content": str}
+        if "chat_loading" not in st.session_state:
+            st.session_state.chat_loading = False
+
+        # --- Display Chat History ---
+        for msg in st.session_state.chat_history:
+            if msg["role"] == "user":
+                st.markdown(f"**You:** {msg['content']}")
+            else:
+                st.markdown(f"<span style='color: #2b7cff'><b>AI:</b> {msg['content']}</span>", unsafe_allow_html=True)
+
+        # --- Chat Input ---
+        with st.form("chat_form", clear_on_submit=True):
+            user_input = st.text_area("Your question", key="chat_input", height=80)
+            submitted = st.form_submit_button("Send", disabled=st.session_state.chat_loading)
+
+        if submitted and user_input.strip():
+            st.session_state.chat_loading = True
+            st.session_state.chat_history.append({"role": "user", "content": user_input})
+            try:
+                headers = {"Authorization": f"Bearer {st.session_state.token}"}
+                payload = {"question": user_input}
+                resp = requests.post(f"{BACKEND_URL}/chat/query/", json=payload, headers=headers, timeout=60)
+                if resp.status_code == 200:
+                    answer = resp.json().get("answer", "(No answer)")
+                    st.session_state.chat_history.append({"role": "assistant", "content": answer})
+                else:
+                    st.session_state.chat_history.append({"role": "assistant", "content": f"(Error: {resp.text})"})
+            except Exception as e:
+                st.session_state.chat_history.append({"role": "assistant", "content": f"(Error: {e})"})
+            st.session_state.chat_loading = False
+            st.rerun()
+
+        if st.session_state.chat_loading:
+            st.info("AI is thinking...")
+
+        if st.button("Clear Chat History"):
+            st.session_state.chat_history = []
+            st.rerun()
 
     elif st.session_state.main_app_page == "Document Management":
         st.title("Document Management")
-        st.write("Document upload and listing will be here.")
-        # Placeholder for document management UI
+        st.write("アップロードしたドキュメントはRAG検索対象になります。TXT/MD/PDF対応。")
+
+        # --- ドキュメントアップロード ---
+        with st.form("upload_form", clear_on_submit=True):
+            uploaded_files = st.file_uploader("Upload documents", type=["txt", "md", "pdf"], accept_multiple_files=True)
+            upload_submit = st.form_submit_button("Upload")
+        if upload_submit and uploaded_files:
+            for uploaded_file in uploaded_files:
+                try:
+                    headers = {"Authorization": f"Bearer {st.session_state.token}"}
+                    files = {"file": (uploaded_file.name, uploaded_file, uploaded_file.type)}
+                    resp = requests.post(f"{BACKEND_URL}/documents/upload/", headers=headers, files=files, timeout=120)
+                    if resp.status_code == 200:
+                        st.success(f"Upload succeeded: {uploaded_file.name}")
+                    else:
+                        st.error(f"Upload failed: {resp.text}")
+                except Exception as e:
+                    st.error(f"Upload error: {e}")
+            st.session_state.chat_loading = False  # ← 追加: アップロード後にchat_loadingを必ずFalseに
+            st.rerun()
+
+        # --- ドキュメント一覧表示 ---
+        st.subheader("Your Uploaded Documents")
+        try:
+            headers = {"Authorization": f"Bearer {st.session_state.token}"}
+            resp = requests.get(f"{BACKEND_URL}/documents/", headers=headers)
+            if resp.status_code == 200:
+                docs = resp.json()
+                if docs:
+                    for doc in docs:
+                        st.markdown(f"- **{doc['original_filename']}** (ID: `{doc['data_source_id']}`) - {doc['status']} - {doc['uploaded_at']} - チャンク数: {doc.get('chunk_count', '-')}")
+                else:
+                    st.info("No documents uploaded yet.")
+            else:
+                st.error(f"Failed to fetch documents: {resp.text}")
+        except Exception as e:
+            st.error(f"Error fetching documents: {e}")
 
     else:
         st.title("Welcome")

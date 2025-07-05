@@ -18,12 +18,12 @@ MochiRAGは、フロントエンド、バックエンドAPI、コアロジック
 
 ```mermaid
 graph TD
-    A[フロントエンド (Streamlit)] --> B(バックエンド API (FastAPI))
-    B --> C{コアロジック (Python)}
-    C --> D[ベクトルDB (ChromaDB)]
-    C --> E[LLM (Ollama - llama3)]
-    B --> F[ユーザー認証・管理]
-    B --> G[ドキュメント処理・メタデータ管理]
+    A["フロントエンド (Streamlit)"] --> B("バックエンド API (FastAPI)")
+    B --> C{"コアロジック (Python)"}
+    C --> D["ベクトルDB (ChromaDB)"]
+    C --> E["LLM (Ollama - llama3)"]
+    B --> F["ユーザー認証・管理"]
+    B --> G["ドキュメント処理・メタデータ管理"]
 ```
 
 ### 技術スタック
@@ -62,25 +62,45 @@ graph TD
     *   *注意: Ollamaが利用できない場合でも、大半の機能（認証、ドキュメント処理、ベクトル化）は動作しますが、チャット応答生成はエラーメッセージを返します。*
 
 ### インストール
+
+#### 自動セットアップ (Linux/macOS 推奨)
+
+プロジェクトルートにあるスクリプトを実行することで、仮想環境の作成と依存関係のインストールを自動で行えます。
+
 1.  **リポジトリのクローン**:
     ```bash
     git clone <リポジトリURL>
     cd MochiRAG
     ```
-    （または、現在の `initial-development-and-review-prep` ブランチをチェックアウト）
 
-2.  **Python仮想環境の作成と有効化**:
+2.  **セットアップスクリプトの実行**:
     ```bash
-    python -m venv venv
+    chmod +x setup_dev.sh
+    ./setup_dev.sh
+    ```
+
+3.  **仮想環境の有効化**:
+    ```bash
+    source venv/bin/activate  # Linux/macOS
+    ```
+
+#### 手動セットアップ
+
+Windowsユーザーや、手動で環境を構築したい場合は、以下の手順に従ってください。
+
+1.  **リポジトリのクローン後、仮想環境を作成・有効化します。**
+    ```bash
+    # 例: uv を使う場合 (高速)
+    uv venv
     source venv/bin/activate  # Linux/macOS
     # venv\Scripts\activate    # Windows
     ```
 
-3.  **依存関係のインストール**:
-    プロジェクトルートで以下を実行します。
+2.  **依存関係をインストールします。**
+    開発に必要なすべての依存関係（テスト用パッケージを含む）をインストールします。
     ```bash
-    pip install -r requirements.txt
-    pip install -r frontend/requirements.txt
+    # uv を使う場合 (推奨)
+    uv pip install ".[test]"
     ```
 
 ### 設定 (必要な場合)
@@ -99,6 +119,65 @@ graph TD
     streamlit run frontend/app.py
     ```
     ブラウザで `http://localhost:8501` (デフォルト) を開きます。
+
+### 実行環境構築の詳細
+
+#### 1. Pythonバージョン
+- Python 3.10 以上が必須です。`python3 --version` で確認してください。
+
+#### 2. 推奨パッケージ管理ツール
+- `uv`（超高速なPythonパッケージマネージャ）が推奨です。
+  インストール例:
+  ```bash
+  pip install uv
+  ```
+
+#### 3. 仮想環境の作成
+- Linux/macOS:
+  ```bash
+  uv venv
+  source venv/bin/activate
+  ```
+- Windows:
+  ```bash
+  uv venv
+  venv\Scripts\activate
+  ```
+
+#### 4. 依存関係のインストール
+- プロジェクトルートで
+  ```bash
+  uv pip install ".[test]"
+  ```
+  `uv` がない場合は
+  ```bash
+  python -m venv venv
+  source venv/bin/activate
+  pip install --upgrade pip
+  pip install ".[test]"
+  ```
+
+#### 5. フロントエンド依存
+- `frontend/requirements.txt` も `pyproject.toml` でカバーされていますが、Streamlitのみ個別にインストールしたい場合は
+  ```bash
+  pip install -r frontend/requirements.txt
+  ```
+
+#### 6. Ollamaのセットアップ（RAG/LLM利用時のみ必須）
+- [Ollama公式](https://ollama.com/) からインストールし、
+  ```bash
+  ollama pull llama3
+  ollama serve
+  ```
+  でローカルサーバーを起動してください。
+
+#### 7. トラブルシューティング
+- **依存関係の競合やインストール失敗時**
+  - `venv` ディレクトリを削除し、再度仮想環境を作り直してください。
+- **Ollamaが動作しない場合**
+  - `ollama serve` のログや `ps aux | grep ollama` でプロセス確認。
+- **ポート競合**
+  - FastAPI: デフォルト8000, Streamlit: 8501。競合時は `--port` オプションで変更。
 
 ## 5. ディレクトリ構造
 

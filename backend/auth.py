@@ -8,7 +8,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from pydantic import EmailStr, ValidationError
+from pydantic import EmailStr, ValidationError, validate_email
 
 from .models import UserCreate, UserInDB, TokenData, User
 
@@ -74,8 +74,8 @@ def create_user_in_db(user_data: UserCreate) -> UserInDB:
         raise ValueError(f"User with username '{user_data.username}' already exists.")
 
     try:
-        EmailStr.validate(user_data.email)
-    except ValueError as e:
+        validate_email(user_data.email)
+    except ValidationError as e:
         raise ValueError(f"Invalid email format: {user_data.email}. Error: {e}")
 
 

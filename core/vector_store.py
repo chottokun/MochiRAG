@@ -3,8 +3,9 @@ import logging
 import os
 from pathlib import Path # Ensure Path is imported at the top
 
-from langchain_community.embeddings import SentenceTransformerEmbeddings
-from langchain_community.vectorstores import Chroma
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_chroma import Chroma
+from langchain_ollama import ChatOllama
 from langchain_core.documents import Document
 from langchain_community.vectorstores.utils import filter_complex_metadata # Import the filter utility
 
@@ -14,14 +15,14 @@ logger = logging.getLogger(__name__)
 
 # Initialize embedding function
 try:
-    embedding_function = SentenceTransformerEmbeddings(
+    embedding_function = HuggingFaceEmbeddings(
         model_name="all-MiniLM-L6-v2",
         # You can specify cache_folder to control where models are downloaded
         # cache_folder="./sentence_transformer_cache/"
     )
-    logger.info("SentenceTransformerEmbeddings loaded successfully.")
+    logger.info("HuggingFaceEmbeddings loaded successfully.")
 except Exception as e:
-    logger.error(f"Failed to load SentenceTransformerEmbeddings: {e}. Ensure a working internet connection for first download or check model name.")
+    logger.error(f"Failed to load HuggingFaceEmbeddings: {e}. Ensure a working internet connection for first download or check model name.")
     raise
 
 # Define ChromaDB persistence path
@@ -58,8 +59,8 @@ def add_documents_to_vector_db(
     try:
         logger.info(f"Adding {len(filtered_documents)} documents to ChromaDB for user '{user_id}', source '{data_source_id}'.")
         vector_db_client.add_documents(documents=filtered_documents)
-        vector_db_client.persist() # Note: Deprecated warning may appear
-        logger.info("Successfully added documents and persisted ChromaDB.")
+        # vector_db_client.persist() # Note: Deprecated warning may appear
+        logger.info("Successfully added documents to ChromaDB.")
     except Exception as e:
         logger.error(f"Error adding documents to ChromaDB: {e}")
         raise
@@ -135,8 +136,8 @@ def delete_documents_by_metadata(filter_criteria: Dict[str, Any]) -> None:
         if ids_to_delete:
             logger.info(f"Found {len(ids_to_delete)} document(s) to delete with IDs: {ids_to_delete}")
             vector_db_client.delete(ids=ids_to_delete)
-            vector_db_client.persist()
-            logger.info(f"Successfully deleted {len(ids_to_delete)} document(s) and persisted ChromaDB.")
+            # vector_db_client.persist()
+            logger.info(f"Successfully deleted {len(ids_to_delete)} document(s) from ChromaDB.")
         else:
             logger.info("No documents found matching the deletion criteria.")
 
