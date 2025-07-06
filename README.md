@@ -1,269 +1,194 @@
 # MochiRAG プロジェクトへようこそ
 
-MochiRAGは、個人のドキュメントに基づいてAIと対話できる、Retrieval-Augmented Generation (RAG) システムです。ユーザーは自身のドキュメントをアップロードし、それらの情報源に基づいた正確な回答をAIから得ることができます。
+MochiRAG は、個人のドキュメントに基づいて AI と対話できる Retrieval-Augmented Generation (RAG) システムです。ユーザーは自身のドキュメントをアップロードし、お好きな RAG 戦略を選択して、どのような回答が得られるかお試しすることができます。  
+
+まだ、実装途中のものがたくさんあります。
+
+---
 
 ## 1. プロジェクト概要
 
-MochiRAGは、エンタープライズ環境での利用も想定し、各ユーザーのドキュメントを安全に管理し、他のユーザーの情報と混在しないようにデータ分離を重視して設計されています。信頼性の高い情報源からの回答生成を目指します。
+- **目的**: ユーザー単位でドキュメントを分離管理し、安全かつ信頼性の高い AI 応答を実現  
+- **RAG 戦略**:  
+  - 実装済み: `basic`、`parent_document` (現在は basic と同等)、`multi_query`、`contextual_compression`
+  - 設定: [`config/strategies.yaml`](config/strategies.yaml) を参照  
+- **主な機能**  
+  - ユーザー認証 (FastAPI OAuth2/JWT)  
+  - ドキュメント管理 (TXT/MD/PDF のアップロード、メタデータ管理)  
+  - RAG チャット (LangChain + Ollama llama3)  
+  - データ分離 (ユーザーごとのベクトル DB 分離)
 
-主な機能：
-*   **ユーザー認証**: 安全なユーザー登録とログイン機能。
-*   **ドキュメント管理**: ユーザーによるドキュメント（TXT, MD, PDF）のアップロードと管理。
-*   **RAGチャット**: アップロードされたドキュメントに基づいた質問応答。複数のRAG戦略（基本、Parent Document、Multi-Query、Contextual Compression）を選択可能。
-*   **データ分離**: 各ユーザーのデータは独立して扱われます。
+---
 
-## 2. アーキテクチャ概要
+## 2. 技術スタック
 
-MochiRAGは、フロントエンド、バックエンドAPI、コアロジック（ドキュメント処理、ベクトルストア、RAGパイプライン）の主要コンポーネントで構成されています。
+- バックエンド: Python + FastAPI  
+- フロントエンド: Python + Streamlit  
+- RAG・LLM: LangChain, Ollama (llama3 モデル)  
+- ベクトルストア: ChromaDB (永続化)  
+- エンベディング: Sentence Transformers (`all-MiniLM-L6-v2`)  
+- テスト: pytest  
 
-```mermaid
-graph TD
-    A["フロントエンド (Streamlit)"] --> B("バックエンド API (FastAPI)")
-    B --> C{"コアロジック (Python)"}
-    C --> D["ベクトルDB (ChromaDB)"]
-    C --> E["LLM (Ollama - llama3)"]
-    B --> F["ユーザー認証・管理"]
-    B --> G["ドキュメント処理・メタデータ管理"]
-```
-
-### 技術スタック
-*   **バックエンド**: FastAPI (Python)
-*   **フロントエンド**: Streamlit (Python)
-*   **RAG・LLM連携**: LangChain (Python)
-*   **LLM**: Ollama (ローカル環境、`llama3` モデルを想定)
-*   **ベクトルデータベース**: ChromaDB (Python, 永続化)
-*   **エンベディングモデル**: Sentence Transformers (`all-MiniLM-L6-v2`)
-*   **認証**: FastAPI OAuth2/JWT (Passlib, python-jose)
+---
 
 ## 3. 機能一覧
 
-*   **ユーザー認証**:
-    *   メールアドレスとパスワードによるユーザー登録。
-    *   JWTベースのトークン認証によるログイン。
-    *   パスワードはハッシュ化して保存。
-*   **ドキュメント管理**:
-    *   TXT, MD, PDF形式のファイルアップロード。
-    *   アップロードされたドキュメントのメタデータ管理（ファイル名、日時など）。
-    *   ユーザーごとのドキュメント一覧表示。
-*   **RAGチャット機能**:
-    *   アップロードされたドキュメント群に対する自然言語での質問応答。
-    *   **RAG戦略選択**: ユーザーはチャット時に以下のRAG戦略を選択できます。
-        *   `basic`: 標準的なベクトル検索とプロンプトによる応答生成。
-        *   `parent_document`: 関連性の高いチャンクの親ドキュメント全体をコンテキストとして利用（注: 現在の実装では `basic` と同様の動作）。
-        *   `multi_query`: 質問を複数の異なるクエリに分解し、検索結果を統合して利用。
-        *   `contextual_compression`: 検索されたドキュメントから、質問に関連する部分のみを抽出して利用。
-        *   `deep_rag`: ユーザーの質問を複数のサブクエリに分解し、それぞれで検索を実行して得られた情報を統合して回答を生成します。複雑な質問に対して、より網羅的で段階的な情報検索を試みます。
-    *   必要に応じて、検索対象のデータソース（ドキュメント）を指定可能。
-    *   LangChainを利用したRAGパイプライン（選択された戦略に応じた検索→プロンプト拡張→LLM応答生成）。
-    *   （将来的には）回答生成時に引用元ドキュメントの情報を提示。
-*   **データ分離・セキュリティ**:
-    *   ユーザーごとにドキュメントとベクトルデータを分離。
-    *   認証されたユーザーは自身のデータにのみアクセス可能。
+1. **ユーザー認証**  
+   - メール／パスワード登録、JWT トークン発行  
+   - パスワードはハッシュ化保存  
+2. **ドキュメント管理**  
+   - TXT, MD, PDF のアップロード・一覧表示  
+   - アップロード履歴・メタデータ管理  
+3. **RAG チャット**  
+   - 自然言語クエリに基づく応答生成  
+   - 戦略選択: `basic`, `parent_document`, `multi_query`, `contextual_compression`  
+4. **データ分離・セキュリティ**  
+   - ユーザー毎に ChromaDB を分離  
+   - 認証ユーザーのみ自身のデータアクセス可能  
 
-## 4. セットアップと実行方法
+---
 
-### 前提条件
-*   Python 3.10 以上
-*   Ollamaがローカル環境で実行されており、`llama3` モデルがプルされていること (`ollama pull llama3`)。
-    *   *注意: Ollamaが利用できない場合でも、大半の機能（認証、ドキュメント処理、ベクトル化）は動作しますが、チャット応答生成はエラーメッセージを返します。*
+## 4. 依存関係とセットアップ
 
-### インストール
+### 4.1 前提条件
 
-#### 自動セットアップ (Linux/macOS 推奨)
+- Python 3.10 以上  
+- （任意）Ollama が動作し、例えば`llama3` モデルが動作可能な状況であること。
 
-プロジェクトルートにあるスクリプトを実行することで、仮想環境の作成と依存関係のインストールを自動で行えます。
+### 4.2 インストール
 
-1.  **リポジトリのクローン**:
-    ```bash
-    git clone <リポジトリURL>
-    cd MochiRAG
-    ```
+#### 自動セットアップ 
 
-2.  **セットアップスクリプトの実行**:
-    ```bash
-    chmod +x setup_dev.sh
-    ./setup_dev.sh
-    ```
+```bash
+git clone <リポジトリURL>
+cd MochiRAG
 
-3.  **仮想環境の有効化**:
-    ```bash
-    source venv/bin/activate  # Linux/macOS
-    ```
+# 開発用スクリプトで仮想環境＆依存関係インストール
+chmod +x setup_dev.sh
+./setup_dev.sh
+
+# 仮想環境をアクティベート
+source venv/bin/activate
+```
 
 #### 手動セットアップ
 
-Windowsユーザーや、手動で環境を構築したい場合は、以下の手順に従ってください。
+```bash
+# 仮想環境の作成・有効化
+python3 -m venv venv
+source venv/bin/activate
 
-1.  **リポジトリのクローン後、仮想環境を作成・有効化します。**
-    ```bash
-    # 例: uv を使う場合 (高速)
-    uv venv
-    source venv/bin/activate  # Linux/macOS
-    # venv\Scripts\activate    # Windows
-    ```
+# プロジェクト依存のインストール
+pip install --upgrade pip
+pip install ".[test]"
+```
 
-2.  **依存関係をインストールします。**
-    開発に必要なすべての依存関係（テスト用パッケージを含む）をインストールします。
-    ```bash
-    # uv を使う場合 (推奨)
-    uv pip install ".[test]"
-    ```
+### 4.3 設定
 
-### 設定 (必要な場合)
-*   バックエンドAPIのURLは、フロントエンド (`frontend/app.py`) 内の `BACKEND_URL` 変数で設定されています (デフォルト: `http://localhost:8000`)。
-*   LLMモデル名 (`llama3`) は `core/rag_chain.py` で設定されています。
+- 環境変数: `.env` を利用可（FastAPI, Streamlit 設定）  
+- RAG 戦略: `config/strategies.yaml` で詳細設定  
 
-### 実行
-1.  **バックエンド FastAPI サーバーの起動**:
-    プロジェクトルートで以下を実行します。
-    ```bash
-    python -m uvicorn backend.main:app --reload --port 8000
-    ```
-2.  **Streamlit フロントエンドの起動**:
-    プロジェクトルートで以下を実行します。
-    ```bash
-    streamlit run frontend/app.py
-    ```
-    ブラウザで `http://localhost:8501` (デフォルト) を開きます。
+---
 
-### 実行環境構築の詳細
+## 5. 実行方法
 
-#### 1. Pythonバージョン
-- Python 3.10 以上が必須です。`python3 --version` で確認してください。
+uv を使うとより簡便に起動できます。
 
-#### 2. 推奨パッケージ管理ツール
-- `uv`（超高速なPythonパッケージマネージャ）が推奨です。
-  インストール例:
-  ```bash
-  pip install uv
-  ```
+### 5.1 バックエンド API 起動
 
-#### 3. 仮想環境の作成
-- Linux/macOS:
-  ```bash
-  uv venv
-  source venv/bin/activate
-  ```
-- Windows:
-  ```bash
-  uv venv
-  venv\Scripts\activate
-  ```
+```bash
+# 仮想環境内で
+uvicorn backend.main:app --reload --port 8000
+```
 
-#### 4. 依存関係のインストール
-- プロジェクトルートで
-  ```bash
-  uv pip install ".[test]"
-  ```
-  `uv` がない場合は
-  ```bash
-  python -m venv venv
-  source venv/bin/activate
-  pip install --upgrade pip
-  pip install ".[test]"
-  ```
+### 5.2 フロントエンド UI 起動
 
-#### 5. フロントエンド依存
-- `frontend/requirements.txt` も `pyproject.toml` でカバーされていますが、Streamlitのみ個別にインストールしたい場合は
-  ```bash
-  pip install -r frontend/requirements.txt
-  ```
+```bash
+# 仮想環境内で
+streamlit run frontend/app.py
+```
 
-#### 6. Ollamaのセットアップ（RAG/LLM利用時のみ必須）
-- [Ollama公式](https://ollama.com/) からインストールし、
-  ```bash
-  ollama pull llama3
-  ollama serve
-  ```
-  でローカルサーバーを起動してください。
+ブラウザで `http://localhost:8501` を開いて操作してください。
 
-#### 7. トラブルシューティング
-- **依存関係の競合やインストール失敗時**
-  - `venv` ディレクトリを削除し、再度仮想環境を作り直してください。
-- **Ollamaが動作しない場合**
-  - `ollama serve` のログや `ps aux | grep ollama` でプロセス確認。
-- **ポート競合**
-  - FastAPI: デフォルト8000, Streamlit: 8501。競合時は `--port` オプションで変更。
+---
 
-## 5. ディレクトリ構造
+## 6. 使用例
 
-主要なディレクトリとファイルの説明です。
+### 6.1 cURL からの RAG クエリ
+
+```bash
+curl -X POST http://localhost:8000/chat/query/ \
+  -H "Authorization: Bearer <TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "MochiRAG のアーキテクチャを教えて",
+    "strategy": "basic"
+  }'
+```
+
+### 6.2 Python スニペット
+
+```python
+import requests
+
+token = "<YOUR_JWT_TOKEN>"
+url = "http://localhost:8000/chat/query/"
+data = {"query": "ドキュメント管理機能は？", "strategy": "multi_query"}
+
+resp = requests.post(url, json=data, headers={"Authorization": f"Bearer {token}"})
+print(resp.json())
+```
+
+---
+
+## 7. テストとコントリビューション
+
+### 7.1 テスト
+
+```bash
+# 全テスト実行
+pytest -q --disable-warnings --maxfail=1
+```
+
+詳細は [`testing_guide.md`](testing_guide.md) を参照。
+
+---
+
+## 8. ディレクトリ構造
 
 ```
 MochiRAG/
-├── backend/                    # FastAPIバックエンド関連
-│   ├── auth.py                 # 認証ロジック (ユーザー作成、トークン生成など)
-│   ├── main.py                 # APIエンドポイント定義
-│   ├── models.py               # Pydanticモデル (リクエスト/レスポンス、DBモデル)
-│   └── __init__.py
-├── core/                       # 中核となるRAG処理ロジック
-│   ├── document_processor.py   # ドキュメント読み込み、チャンキング
-│   ├── rag_chain.py            # RAG応答生成パイプライン
-│   ├── vector_store.py         # エンベディング生成、ChromaDB連携
-│   └── __init__.py
-├── data/                       # アプリケーションデータ (DB、アップロードなど)
-│   ├── chroma_db/              # ChromaDB永続化データ (自動生成)
-│   ├── datasources_meta.json   # アップロードされたドキュメントのメタデータ
-│   ├── sample_docs/            # サンプルドキュメント (テスト用)
-│   ├── tmp_uploads/            # 一時アップロードファイル格納用
-│   └── users.json              # ユーザー情報 (簡易的な代替DB)
-├── frontend/                   # Streamlitフロントエンド関連
-│   ├── app.py                  # Streamlitアプリケーション本体
-│   └── requirements.txt        # フロントエンド用依存関係
-├── tests/                      # Pytestテストコード
-│   ├── backend/                # バックエンドAPIテスト
-│   │   └── test_auth.py
-│   ├── core/                   # コアロジックテスト (今後追加)
-│   └── __init__.py
-├── docs/                       # (将来的に) 詳細なドキュメントを格納
-│   └── code_explanations/      # (将来的に) 各モジュールの詳細説明
-├── .gitignore
-├── explanation4review.md       # レビュー担当者向けの説明ファイル
-├── MochiRAG設計.md             # 初期設計ドキュメント
-├── pytest.ini                  # Pytest設定ファイル
-├── README.md                   # このファイル
-├── requirements.txt            # プロジェクト全体の主要依存関係
-└── testing_guide.md            # テスト実行ガイド
+├── backend/              FastAPI バックエンド
+├── core/                 RAG ロジック (ドキュメント処理／ベクトルストア)
+├── data/                 ChromaDB 永続化データ、サンプルdocs
+├── frontend/             Streamlit UI
+├── tests/                pytest テストコード
+├── config/               RAG 戦略設定 (strategies.yaml)
+├── status.md             プロジェクト進捗・ステータス
+├── testing_guide.md      テスト実行ガイド
+├── setup_dev.sh          セットアップスクリプト
+├── requirements.txt      依存関係定義
+└── README.md             本ドキュメント
 ```
 
-## 6. APIエンドポイント概要
+---
 
-主要なAPIエンドポイントは `backend/main.py` で定義されています。
-*   `/users/`: (POST) 新規ユーザー登録
-*   `/token`: (POST) ユーザートークン取得 (ログイン)
-*   `/users/me`: (GET) 認証ユーザー情報取得
-*   `/documents/upload/`: (POST) ドキュメントアップロード
-*   `/documents/`: (GET) アップロード済みドキュメント一覧
-*   `/chat/query/`: (POST) RAGチャットクエリ
+## 9. API エンドポイント
 
-詳細なAPI仕様については、FastAPIが自動生成するSwagger UI (`/docs`) やRedoc (`/redoc`)で確認可能です。（バックエンドサーバー実行中にアクセス）
+- `POST /users/`           : 新規ユーザー登録  
+- `POST /token`            : トークン取得 (ログイン)  
+- `GET  /users/me`         : 認証ユーザー情報取得  
+- `POST /documents/upload/`: ドキュメントアップロード  
+- `GET  /documents/`       : アップロード済みドキュメント一覧  
+- `POST /chat/query/`      : RAG チャットクエリ  
 
-## 7. テスト
+詳細は FastAPI 自動生成ドキュメント (`/docs` または `/redoc`) を参照。
 
-テストは `pytest` を使用して行われます。テストの実行方法やフィードバックについては、[testing_guide.md](./testing_guide.md) を参照してください。
-テスト駆動開発 (TDD) またはそれに近いアプローチを推奨し、主要な機能にはユニットテストや結合テストを作成します。
+---
 
-## 8. コード詳細説明 (プレースホルダー)
+## 10. 今後の展望・ロードマップ
 
-各主要モジュールの詳細な設計や実装については、以下のドキュメント（今後作成予定）を参照してください。
-
-*   [バックエンド認証 (`backend/auth.py`) の詳細](./docs/code_explanations/backend_auth.md) (未作成)
-*   [ドキュメント処理 (`core/document_processor.py`) の詳細](./docs/code_explanations/document_processor.md) (未作成)
-*   [ベクトルストア (`core/vector_store.py`) の詳細](./docs/code_explanations/vector_store.md) (未作成)
-*   [RAGチェーン (`core/rag_chain.py`) の詳細](./docs/code_explanations/rag_chain.md) (未作成)
-*   [APIエンドポイント (`backend/main.py`) の詳細](./docs/code_explanations/backend_main.md) (未作成)
-*   [フロントエンド (`frontend/app.py`) の詳細](./docs/code_explanations/frontend_app.md) (未作成)
-
-## 9. コード拡張とコントリビューション (プレースホルダー)
-
-開発プロセス、新機能の追加方法、コーディングスタイルなど。 (今後記述予定)
-
-## 10. 今後の展望・ロードマップ (プレースホルダー)
-
-計画中の機能改善や新機能。 (今後記述予定)
-*   Ollama以外のLLM（Azure OpenAIなど）への対応オプションの追加
-*   チャットUIでの引用元表示の強化
-*   ドキュメントインジェスト処理の非同期化・バッチ処理化
-*   より高度なメタデータフィルタリングと検索オプションの提供
-*   管理者向け機能（ユーザー管理、システム監視など）
-
+- Azure OpenAI など外部 LLM の対応
+- チャット UI での引用元表示強化  
+- ドキュメント処理の非同期／バッチ化  
+- 管理者向けダッシュボード
