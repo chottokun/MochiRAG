@@ -387,16 +387,16 @@ class RetrieverManager:
             name = strat_conf.get("name")
             # type フィールドは config/strategies.yaml には追加したが、RetrieverManagerでは現状 name で分岐している
             # 将来的には type フィールドを見て動的にクラスを選択する方がより柔軟
-            # strat_type = strat_conf.get("type")
+
 
             if not name: # strat_type も必須にするなら all([name, strat_type])
                 logger.warning(f"RetrieverManager: Skipping RAG search strategy with no name: {strat_conf}")
                 continue
 
-
-            strat_type = strat_conf.get("type") # 設定ファイルからtypeを取得
+            # strat_type = strat_conf.get("type") # 設定ファイルからtypeを取得 # この行を修正
+            strat_type = strat_conf.get("type")
             if not strat_type:
-                logger.warning(f"RetrieverManager: RAG search strategy '{name}' has no 'type' defined. Skipping.")
+                logger.warning(f"RetrieverManager: RAG search strategy '{name}' has no 'type' defined in config. Skipping.")
                 continue
 
             strategy_instance: Optional[RetrieverStrategyInterface] = None
@@ -416,8 +416,8 @@ class RetrieverManager:
                     continue
 
                 if strategy_instance:
-                    self.strategies[name] = strategy_instance
-                    logger.info(f"RetrieverManager: Registered RAG search strategy: {name}")
+                    self.strategies[name] = strategy_instance # 登録は name で行う
+                    logger.info(f"RetrieverManager: Registered RAG search strategy: {name} (type: {strat_type})")
             except Exception as e:
                 logger.error(f"RetrieverManager: Failed to initialize RAG search strategy '{name}': {e}", exc_info=True)
 

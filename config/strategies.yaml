@@ -33,19 +33,24 @@ rag_search_strategies:
   default: basic
   available:
     - name: basic
+      type: basic # <--- Add type
       description: "Standard vector similarity search."
       # basic戦略に特有のデフォルトパラメータがあればここに記述 (例: n_results)
       # default_n_results: 3
     - name: multi_query
+      type: multi_query # <--- Add type
       description: "Generates multiple queries from the original to broaden search."
       # default_n_results: 3
     - name: contextual_compression
+      type: contextual_compression # <--- Add type
       description: "Retrieves, then compresses documents to only relevant parts."
       # default_n_results: 5 # Compressorのために初期取得数を多めに設定することが多い
     - name: parent_document
+      type: parent_document # <--- Add type
       description: "Retrieves child chunks and returns parent documents. (Currently falls back to basic)"
       # default_n_results: 3
     - name: deep_rag
+      type: deep_rag # <--- Add type
       description: "Decomposes complex queries into sub-queries for staged retrieval."
       # default_n_results_per_subquery: 3 # サブクエリごとの取得数
       # default_max_sub_queries: 3       # 最大サブクエリ数
