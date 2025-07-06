@@ -379,7 +379,10 @@ class RetrieverManager:
             logger.warning("RetrieverManager: 'rag_search_strategies.available' section not found or not a list. No strategies loaded.")
             return
 
+        logger.info(f"RetrieverManager: Loading RAG search strategies. Default: {self.default_strategy_name}, Available configs: {available_configs}")
+
         for strat_conf in available_configs:
+            logger.debug(f"RetrieverManager: Processing strategy config: {strat_conf}")
             if not isinstance(strat_conf, dict):
                 logger.warning(f"RetrieverManager: Skipping invalid RAG search strategy config item (not a dict): {strat_conf}")
                 continue
