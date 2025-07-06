@@ -75,4 +75,3 @@ llm_config:
     #   model: "gpt-3.5-turbo"
     #   api_key_env: "OPENAI_API_KEY" # 環境変数からAPIキーを読み込む場合
     #   temperature: 0.1
-```
