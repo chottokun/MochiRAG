@@ -30,9 +30,13 @@ dependencies = [
     "langchain-community",
     "langchain-core",
     "langchain-ollama",
+    "langchain-huggingface",
+    "langchain-chroma",
     "sentence-transformers",
     "chromadb",
     "unstructured",
+    "PyYAML",
+    "langchain-experimental", # Added langchain-experimental
     "markdown",
     "pypdf",
     "reportlab",

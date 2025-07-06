@@ -2,6 +2,37 @@ import streamlit as st
 import requests
 import json # For handling potential JSON decode errors more gracefully
 
+import streamlit as st
+import requests
+import json # For handling potential JSON decode errors more gracefully
+
+# Attempt to import AVAILABLE_RAG_STRATEGIES for the dropdown
+# This requires the core module to be accessible.
+# If running Streamlit from project root, and core is in PYTHONPATH, this should work.
+try:
+    from core.rag_chain import AVAILABLE_RAG_STRATEGIES
+except ImportError:
+    # Fallback if core.rag_chain is not directly importable
+    # This might happen if Streamlit is run from the frontend directory directly
+    # or if PYTHONPATH is not set up.
+    # Add the project root to sys.path if 'core' is not found.
+    import sys
+    from pathlib import Path
+    project_root = Path(__file__).resolve().parent.parent
+    if str(project_root) not in sys.path:
+        sys.path.insert(0, str(project_root))
+    try:
+        from core.rag_chain import AVAILABLE_RAG_STRATEGIES
+        from core.embedding_manager import embedding_manager # EmbeddingManagerのインスタンス
+        from core.chunking_manager import chunking_manager # ChunkingManagerのインスタンス
+    except ImportError:
+        AVAILABLE_RAG_STRATEGIES = ["basic"]
+        st.warning("Could not load RAG, Embedding, or Chunking strategies from core modules. Defaulting to 'basic'. Ensure PYTHONPATH is set correctly.")
+        # マネージャーがロードできない場合のフォールバック
+        embedding_manager = None
+        chunking_manager = None
+
+
 # --- Configuration ---
 BACKEND_URL = "http://localhost:8000" # Ensure this matches your FastAPI backend URL
 
@@ -136,9 +167,22 @@ else:
     # Main content area based on navigation
     if st.session_state.main_app_page == "Chat":
         st.title("Chat Page")
+
+        # --- RAG Strategy Selection ---
+        st.sidebar.subheader("RAG Strategy")
+        # Use AVAILABLE_RAG_STRATEGIES imported or defaulted earlier
+        selected_strategy = st.sidebar.selectbox(
+            "Choose a RAG strategy:",
+            options=AVAILABLE_RAG_STRATEGIES,
+            index=AVAILABLE_RAG_STRATEGIES.index("basic") if "basic" in AVAILABLE_RAG_STRATEGIES else 0, # Default to basic
+            key="rag_strategy_selector"
+        )
+        st.sidebar.caption(f"Current strategy: **{selected_strategy}**")
+
+
         # --- Chat Session State ---
         if "chat_history" not in st.session_state:
-            st.session_state.chat_history = []  # List of dicts: {"role": "user"|"assistant", "content": str}
+            st.session_state.chat_history = []  # List of dicts: {"role": "user"|"assistant", "content": str, "strategy_used": Optional[str]}
         if "chat_loading" not in st.session_state:
             st.session_state.chat_loading = False
 
@@ -147,11 +191,17 @@ else:
             if msg["role"] == "user":
                 st.markdown(f"**You:** {msg['content']}")
             else:
-                st.markdown(f"<span style='color: #2b7cff'><b>AI:</b> {msg['content']}</span>", unsafe_allow_html=True)
+                ai_response_text = f"<span style='color: #2b7cff'><b>AI</b>"
+                if msg.get("strategy_used"):
+                    ai_response_text += f" (<i>{msg['strategy_used']}</i>)"
+                ai_response_text += f":</span> {msg['content']}"
+                st.markdown(ai_response_text, unsafe_allow_html=True)
+
 
         # --- Chat Input ---
         with st.form("chat_form", clear_on_submit=True):
             user_input = st.text_area("Your question", key="chat_input", height=80)
+            # selected_strategy is already available from the sidebar selectbox
             submitted = st.form_submit_button("Send", disabled=st.session_state.chat_loading)
 
         if submitted and user_input.strip():
@@ -159,20 +209,54 @@ else:
             st.session_state.chat_history.append({"role": "user", "content": user_input})
             try:
                 headers = {"Authorization": f"Bearer {st.session_state.token}"}
-                payload = {"question": user_input}
+                # Include the selected RAG strategy in the payload
+                payload = {
+                    "question": user_input,
+                    "rag_strategy": selected_strategy # Get from sidebar
+                }
+                # TODO: Add data_source_ids selection if needed in the future
+                # payload["data_source_ids"] = [...]
+
                 resp = requests.post(f"{BACKEND_URL}/chat/query/", json=payload, headers=headers, timeout=60)
+
                 if resp.status_code == 200:
-                    answer = resp.json().get("answer", "(No answer)")
-                    st.session_state.chat_history.append({"role": "assistant", "content": answer})
+                    response_data = resp.json()
+                    answer = response_data.get("answer", "(No answer received)")
+                    strategy_used = response_data.get("strategy_used", selected_strategy) # Use backend confirmed strategy
+                    st.session_state.chat_history.append({
+                        "role": "assistant",
+                        "content": answer,
+                        "strategy_used": strategy_used
+                    })
                 else:
-                    st.session_state.chat_history.append({"role": "assistant", "content": f"(Error: {resp.text})"})
-            except Exception as e:
-                st.session_state.chat_history.append({"role": "assistant", "content": f"(Error: {e})"})
-            st.session_state.chat_loading = False
-            st.rerun()
+                    error_detail = resp.text
+                    try: # Try to parse JSON for more specific error
+                        error_detail = resp.json().get("detail", resp.text)
+                    except json.JSONDecodeError:
+                        pass
+                    st.session_state.chat_history.append({
+                        "role": "assistant",
+                        "content": f"(Error: {error_detail})",
+                        "strategy_used": selected_strategy # Show strategy attempted
+                    })
+            except requests.exceptions.RequestException as e: # More specific for network/request errors
+                 st.session_state.chat_history.append({
+                    "role": "assistant",
+                    "content": f"(Request Error: {e})",
+                    "strategy_used": selected_strategy
+                })
+            except Exception as e: # General fallback
+                st.session_state.chat_history.append({
+                    "role": "assistant",
+                    "content": f"(Unexpected Error: {e})",
+                    "strategy_used": selected_strategy
+                })
+            finally:
+                st.session_state.chat_loading = False
+                st.rerun()
 
         if st.session_state.chat_loading:
-            st.info("AI is thinking...")
+            st.info(f"AI is thinking (using {selected_strategy} strategy)...")
 
         if st.button("Clear Chat History"):
             st.session_state.chat_history = []
@@ -182,23 +266,109 @@ else:
         st.title("Document Management")
         st.write("アップロードしたドキュメントはRAG検索対象になります。TXT/MD/PDF対応。")
 
+        # --- Vector Store Strategy Selection ---
+        st.subheader("Vector Store Processing Strategies")
+
+        available_embedding_strategies = ["default"]
+        if embedding_manager:
+            try:
+                available_embedding_strategies = embedding_manager.get_available_strategies()
+            except Exception as e:
+                st.error(f"Failed to load embedding strategies: {e}")
+
+        selected_embedding_strategy = st.selectbox(
+            "Choose Embedding Strategy:",
+            options=available_embedding_strategies,
+            index=0,
+            key="embedding_strategy_selector"
+        )
+
+        available_chunking_strategies = ["default"]
+        if chunking_manager:
+            try:
+                available_chunking_strategies = chunking_manager.get_available_strategies()
+            except Exception as e:
+                st.error(f"Failed to load chunking strategies: {e}")
+
+        selected_chunking_strategy = st.selectbox(
+            "Choose Chunking Strategy:",
+            options=available_chunking_strategies,
+            index=0,
+            key="chunking_strategy_selector"
+        )
+
+        # チャンキングパラメータ入力 (例: chunk_size)
+        # chunk_params_json = st.text_input("Chunking Parameters (JSON string, optional)", value='{"chunk_size": 1000, "chunk_overlap": 200}')
+        # よりユーザーフレンドリーなUIも検討可能 (例: 数値入力フィールド)
+        custom_chunk_size = st.number_input("Chunk Size (for recursive)", value=1000, min_value=100, step=50, key="chunk_size_input")
+        custom_chunk_overlap = st.number_input("Chunk Overlap (for recursive)", value=200, min_value=0, step=20, key="chunk_overlap_input")
+
+
         # --- ドキュメントアップロード ---
+        st.subheader("Upload New Document")
         with st.form("upload_form", clear_on_submit=True):
-            uploaded_files = st.file_uploader("Upload documents", type=["txt", "md", "pdf"], accept_multiple_files=True)
-            upload_submit = st.form_submit_button("Upload")
-        if upload_submit and uploaded_files:
-            for uploaded_file in uploaded_files:
-                try:
-                    headers = {"Authorization": f"Bearer {st.session_state.token}"}
-                    files = {"file": (uploaded_file.name, uploaded_file, uploaded_file.type)}
-                    resp = requests.post(f"{BACKEND_URL}/documents/upload/", headers=headers, files=files, timeout=120)
-                    if resp.status_code == 200:
-                        st.success(f"Upload succeeded: {uploaded_file.name}")
-                    else:
-                        st.error(f"Upload failed: {resp.text}")
-                except Exception as e:
-                    st.error(f"Upload error: {e}")
-            st.session_state.chat_loading = False  # ← 追加: アップロード後にchat_loadingを必ずFalseに
+            uploaded_file = st.file_uploader("Upload a document", type=["txt", "md", "pdf"], accept_multiple_files=False) # 一旦単一ファイルに
+            upload_submit = st.form_submit_button("Upload Document")
+
+        if upload_submit and uploaded_file:
+            # 選択された戦略とパラメータを準備
+            upload_request_data = {
+                "embedding_strategy": selected_embedding_strategy if selected_embedding_strategy != "default" else None,
+                "chunking_strategy": selected_chunking_strategy if selected_chunking_strategy != "default" else None,
+            }
+            # RecursiveTextSplitterの場合のパラメータ設定（他の戦略では異なるUIが必要になる可能性）
+            if selected_chunking_strategy and "recursive" in selected_chunking_strategy:
+                 upload_request_data["chunking_params"] = {
+                     "chunk_size": custom_chunk_size,
+                     "chunk_overlap": custom_chunk_overlap
+                 }
+
+            try:
+                headers = {"Authorization": f"Bearer {st.session_state.token}"}
+                # ファイルとリクエストデータを一緒に送信 (multipart/form-data)
+                # FastAPI側で Body() と File() を同時に受け取るには工夫が必要な場合がある
+                # ここでは、upload_request_data をJSON文字列としてファイルと一緒に送信する
+                files = {
+                    "file": (uploaded_file.name, uploaded_file, uploaded_file.type),
+                    # DocumentUploadRequestをJSON文字列として送信
+                    "upload_request": (None, json.dumps(upload_request_data), "application/json")
+                }
+
+                # バックエンドAPIの /documents/upload/ は DocumentUploadRequest を Body(...) で受け取る想定
+                # ファイルアップロードとJSONボディを同時に扱うには、FastAPI側で工夫が必要。
+                # 一般的なのは、JSONボディをFormデータとして送信するか、
+                # リクエストを2段階に分ける（メタ情報POST -> ファイルPUTなど）。
+                # ここでは、Body()とFile()を同時に受け付けるようにFastAPIが設定されていると仮定する。
+                # しかし、requestsライブラリでこれを単純に行うのは難しい。
+                # Bodyパラメータは通常 application/json として送られる。
+                # 解決策: FastAPIエンドポイントを修正し、戦略パラメータをフォームデータとして受け取る。
+                # または、戦略パラメータをクエリパラメータとして渡す。今回はフォームデータとして修正する想定で進める。
+
+                form_data = {
+                    'embedding_strategy': upload_request_data["embedding_strategy"],
+                    'chunking_strategy': upload_request_data["chunking_strategy"],
+                }
+                if upload_request_data.get("chunking_params"):
+                    form_data['chunking_params_json'] = json.dumps(upload_request_data["chunking_params"])
+
+
+                # `files` に `upload_request` を含めず、`data` でフォームデータを渡す
+                actual_files = {"file": (uploaded_file.name, uploaded_file, uploaded_file.type)}
+                resp = requests.post(
+                    f"{BACKEND_URL}/documents/upload/",
+                    headers=headers,
+                    files=actual_files, # ファイルのみ
+                    data=form_data,     # 戦略パラメータをフォームデータとして送信
+                    timeout=120
+                )
+
+                if resp.status_code == 200:
+                    st.success(f"Upload succeeded: {uploaded_file.name}")
+                else:
+                    st.error(f"Upload failed: {resp.status_code} - {resp.text}")
+            except Exception as e:
+                st.error(f"Upload error: {e}")
+            # st.session_state.chat_loading = False # Document Managementページなのでchat_loadingは不要
             st.rerun()
 
         # --- ドキュメント一覧表示 ---
