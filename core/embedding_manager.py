@@ -97,19 +97,27 @@ class EmbeddingManager:
             logger.error(f"EmbeddingManager: Failed to load strategy configuration: {e}. No strategies will be available.", exc_info=True)
             return # 設定が読めなければ戦略は空のまま
 
+        logger.info(f"EmbeddingManager: Loaded raw config: {config}") # DEBUG: Print raw config
+
         embedding_config = config.get("embedding_strategies")
         if not isinstance(embedding_config, dict):
-            logger.warning("EmbeddingManager: 'embedding_strategies' section not found or invalid in config. No strategies loaded.")
+            logger.warning(f"EmbeddingManager: 'embedding_strategies' section not found or invalid in config (type: {type(embedding_config)}). No strategies loaded.")
             return
+
+        logger.info(f"EmbeddingManager: Found embedding_strategies config: {embedding_config}") # DEBUG
 
         self.default_strategy_name = embedding_config.get("default")
         available_configs = embedding_config.get("available")
 
         if not isinstance(available_configs, list):
-            logger.warning("EmbeddingManager: 'embedding_strategies.available' section not found or not a list. No strategies loaded.")
+            logger.warning(f"EmbeddingManager: 'embedding_strategies.available' section not found or not a list (type: {type(available_configs)}). No strategies loaded.")
             return
 
+        logger.info(f"EmbeddingManager: Default embedding strategy name: {self.default_strategy_name}")
+        logger.info(f"EmbeddingManager: Available embedding strategy configs: {available_configs}")
+
         for strat_config in available_configs:
+            logger.debug(f"EmbeddingManager: Processing embedding strategy config: {strat_config}") # DEBUG
             if not isinstance(strat_config, dict):
                 logger.warning(f"EmbeddingManager: Skipping invalid strategy config item (not a dict): {strat_config}")
                 continue
