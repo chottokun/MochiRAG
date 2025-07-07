@@ -191,6 +191,9 @@ def test_embedding_manager_config_file_not_found(monkeypatch, caplog):
     monkeypatch.setattr("core.embedding_manager.load_strategy_config", mock_load_raises_error)
 
     manager = EmbeddingManager()
-    assert "Failed to load embedding strategy configuration: File not found for test" in caplog.text
+    assert any(
+        "EmbeddingManager: Failed to load strategy configuration: File not found for test" in record.message and record.levelname == 'ERROR'
+        for record in caplog.records
+    )
     assert not manager.get_available_strategies()
     assert manager.default_strategy_name is None
