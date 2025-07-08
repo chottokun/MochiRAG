@@ -294,12 +294,16 @@ def test_upload_document_invalid_chunking_params_json(test_user_token):
 # そのためには、事前にDataSourceMetaに `embedding_strategy_used` を含むデータをモックする必要がある
 from core.embedding_manager import embedding_manager # Added import
 
-@pytest.mark.skip(reason="Failing due to difficulty in correctly mocking for embedding_strategy_for_retrieval. To be revisited.")
+from unittest.mock import mock_open # Added import
+
+# Skipを解除しました
 @patch("backend.main.embedding_manager", autospec=True) # embedding_manager をモック
-@patch("backend.main._read_datasources_meta") # _read_datasources_meta をモック
+# @patch("backend.main._read_datasources_meta") # _read_datasources_meta のモックは解除
+@patch("json.load") # json.load をモック
+@patch("builtins.open", new_callable=mock_open) # open をモック
 @patch("backend.main.get_rag_response")
 def test_chat_query_uses_embedding_strategy_from_metadata(
-    mock_get_rag_response, mock_read_metas, mock_embedding_manager, test_user_token
+    mock_get_rag_response, mock_open_file, mock_json_load, mock_embedding_manager, test_user_token # mock_read_metas を削除し、新しいモックを追加
 ):
     mock_embedding_manager.get_available_strategies.return_value = ["default_from_mock_manager"]
     mock_answer_meta = "Response based on specific embedding."
@@ -309,60 +313,32 @@ def test_chat_query_uses_embedding_strategy_from_metadata(
     test_ds_id = "ds_with_specific_embedding"
     specific_embedding_strategy = "sentence_transformer_custom_test_model" # 仮の戦略名
 
-    # _read_datasources_meta が返す値を設定
-    # test_user_tokenから実際のユーザーIDを取得する方法が必要だが、ここでは固定値で代用
-    # 実際のテストでは、fixtureからuser_idを取得するか、auth部分も考慮に入れる
-    # mock_user_id = "mock_user_id_for_meta_test" # 仮のユーザーID # この行は不要そうなのでコメントアウト
+    # auth.get_current_active_user のモック設定
+    mock_user_instance = MagicMock(spec=User)
+    user_id_for_meta_str = "123e4567-e89b-12d3-a456-426614174000"
+    user_id_uuid = uuid.UUID(user_id_for_meta_str)
+    mock_user_instance.user_id = user_id_uuid
 
-    # test_user_token fixture内でユーザーが作成・ログインされるため、
-    # そのユーザーIDをここで知ることは難しい。
-    # 代わりに、get_current_active_user をモックして特定のユーザー情報を返すようにする。
+    # _read_datasources_meta が読み込むであろうJSONデータをモックで設定
+    ds_meta_dict = { # DataSourceMeta オブジェクトではなく、JSONからロードされる辞書を模倣
+        "data_source_id": test_ds_id,
+        "original_filename": "dummy.pdf",
+        "status": "processed",
+        "uploaded_at": "2023-01-01T00:00:00Z",
+        "chunk_count": 10, # Optionalだが、テストのため設定
+        "embedding_strategy_used": specific_embedding_strategy,
+        # "additional_info": None, # Optional
+        # "chunking_strategy_used": None, # Optional
+        # "chunking_config_used": None, # Optional
+    }
+    mock_json_load.return_value = { # json.load が返すデータ
+        user_id_for_meta_str: [ds_meta_dict]
+    }
 
-    # mock_current_user = MagicMock(spec=User) # このブロックは不要そうなのでコメントアウト
-    # mock_current_user.user_id = test_username # test_user_tokenで使われるユーザー名と合わせる
-                                            # (実際にはUUIDだが、ここでは文字列で合わせる)
+    # `open` が呼ばれたことを確認する程度 (実際のファイルパスは動的なので検証難しい)
+    # mock_open_file.assert_called_with(DATASOURCES_META_PATH, "r", encoding="utf-8")
 
-    # UserオブジェクトはUUIDを持つので、それを使う
-    # test_user_token内でユーザー作成時にUUIDが発行される。それを知る必要がある。
-    # 今回は、_read_datasources_metaのモックで、tokenのsub（ユーザー名）をキーにするのではなく
-    # 固定のユーザーIDに対するメタデータを返すようにする。
-    # もしくは、auth.get_current_active_user をモックして、固定のUserオブジェクトを返す。
-
-    # ここでは、_read_datasources_metaが返すデータに、現在のトークンユーザーのIDが含まれるようにする
-    # test_user_token['access_token'] からデコードしてユーザーIDを取得するのはテストが複雑になる
-    # 代わりに、test_user_token fixtureがユーザーIDも返すように変更するか、
-    # get_current_active_userをモックする
-
-    # 簡単化のため、ここでは test_user_token['access_token'] は使わず、
-    # get_current_active_user が返すユーザーの user_id (文字列化されたUUID) を
-    # _read_datasources_meta のキーとして使用することを想定する。
-    # test_user_token fixture内でユーザーが作成されるので、そのユーザーIDを取得する
-    # 実際のユーザーIDの取得は test_user_token のレスポンスに含めるか別途取得する
-
-    # ここでは、auth.get_current_active_user をモックして、固定のユーザーIDを持つユーザーを返す
-    with patch("backend.main.auth.get_current_active_user") as mock_get_user:
-        mock_user_instance = MagicMock(spec=User)
-        # 有効なUUID文字列を使用
-        user_id_for_meta_str = "123e4567-e89b-12d3-a456-426614174000"
-        user_id_uuid = uuid.UUID(user_id_for_meta_str)
-        mock_user_instance.user_id = user_id_uuid # Userモデルの型に合わせてUUIDオブジェクトを設定
-
-        mock_get_user.return_value = mock_user_instance
-
-        # backend/main.pyでは str(current_user.user_id) をキーにしているので、文字列のUUIDをキーにする
-        ds_meta_instance = DataSourceMeta(
-            data_source_id=test_ds_id,
-            original_filename="dummy.pdf",
-            status="processed",
-            uploaded_at="2023-01-01T00:00:00Z",
-            embedding_strategy_used=specific_embedding_strategy
-        )
-        assert ds_meta_instance.embedding_strategy_used == specific_embedding_strategy # Debug assert
-
-        mock_read_metas.return_value = {
-            user_id_for_meta_str: [ds_meta_instance]
-        }
-
+    with patch("backend.main.auth.get_current_active_user", return_value=mock_user_instance):
         headers = {"Authorization": f"Bearer {test_user_token['access_token']}"} # トークン自体は有効なものを使用
         query_payload = {
             "question": "Query for doc with specific embedding",
