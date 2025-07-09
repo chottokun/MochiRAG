@@ -67,17 +67,47 @@ def test_chunking_manager_load_valid_config(mock_load_config_chunking, mock_embe
     assert "recursive_default" in available
     assert "recursive_small" in available
     assert "semantic_test" in available # embedding_managerがモックされていればロード試行される
+    assert len(available) == 3 # 登録されている戦略の総数を確認
 
-    strat_default = manager.get_strategy("recursive_default")
-    assert isinstance(strat_default, RecursiveTextSplitterChunking)
-    assert strat_default.chunk_size == 500
-    assert strat_default.get_config()['type'] == "recursive_text_splitter"
-
-    # SemanticChunkerのインスタンス化が試みられることを確認（モックにより成功するはず）
-    # mock_embedding_manager_for_chunking が呼ばれることで確認
-    strat_semantic = manager.get_strategy("semantic_test")
-    assert isinstance(strat_semantic, SemanticChunkingStrategy)
+    # 個別の戦略のプロパティ検証は test_chunking_manager_load_and_get_strategy_properties で行う
+    # ここでは、semantic_test のロード時に embedding_manager が呼ばれることだけ確認
+    manager.get_strategy("semantic_test") # これにより内部で get_embedding_model が呼ばれるはず
     mock_embedding_manager_for_chunking.get_embedding_model.assert_called_with("mock_embedding")
+
+
+@pytest.mark.parametrize(
+    "strategy_name, expected_type, expected_params",
+    [
+        ("recursive_default", RecursiveTextSplitterChunking, {"chunk_size": 500, "chunk_overlap": 50}),
+        ("recursive_small", RecursiveTextSplitterChunking, {"chunk_size": 100, "chunk_overlap": 10}),
+        ("semantic_test", SemanticChunkingStrategy, {"breakpoint_threshold_type": "standard_deviation", "_embedding_strategy_ref": "mock_embedding"}),
+    ]
+)
+def test_chunking_manager_load_and_get_strategy_properties(
+    strategy_name, expected_type, expected_params,
+    mock_load_config_chunking, mock_embedding_manager_for_chunking
+):
+    mock_load_config_chunking(SAMPLE_CONFIG_VALID_CHUNKING)
+    manager = ChunkingManager()
+
+    assert strategy_name in manager.get_available_strategies()
+    strategy_instance = manager.get_strategy(strategy_name)
+    assert isinstance(strategy_instance, expected_type)
+
+    config = strategy_instance.get_config()
+    assert config["name"] == strategy_name # nameもconfigに含まれる想定
+
+    for param_key, expected_value in expected_params.items():
+        if param_key == "_embedding_strategy_ref": # SemanticChunkingStrategyの内部的な参照確認
+             # この確認は mock_embedding_manager_for_chunking.get_embedding_model.assert_called_with(expected_value)
+             # が test_chunking_manager_load_valid_config で行われているので、ここでは省略または別の方法で確認
+             pass
+        elif hasattr(strategy_instance, param_key):
+            assert getattr(strategy_instance, param_key) == expected_value
+        elif param_key in config: # get_config() から取得できるパラメータを確認
+            assert config[param_key] == expected_value
+        else:
+            pytest.fail(f"Parameter '{param_key}' not found in strategy instance or its config.")
 
 
 def test_chunking_manager_minimal_config(mock_load_config_chunking, mock_embedding_manager_for_chunking):

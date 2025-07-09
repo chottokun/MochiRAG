@@ -20,7 +20,33 @@ This document tracks the status of bug fixes and improvements for the MochiRAG p
     - Known Issues:
         - (No known issues at this time, all tests passing)
     - Next Steps:
-        - Final review and submit.
+        - Implement CI/CD pipeline improvements.
+        - Enhance tests with more parametrization.
+
+## In Progress (New Plan: Test Infrastructure Improvement)
+
+- **Task: CI/CD Pipeline Integration/Enhancement**
+    - Started: YYYY-MM-DD (To be updated)
+    - Goal: Automate test execution on code changes to ensure continuous quality.
+    - Current Sub-task: Initial GitHub Actions workflow file created. (Verification pending actual push)
+    - Plan:
+        1. Current setup investigation. (Completed: No existing CI/CD config found)
+        2. Platform selection/configuration (GitHub Actions preferred if none exists). (Selected: GitHub Actions)
+        3. Test execution job creation (Python setup, dependencies, pytest execution). (Completed: Basic workflow file `.github/workflows/python-app.yml` created)
+        4. Trigger configuration (on push/PR to main/develop branches). (Defined in workflow)
+        5. Result notification setup. (Basic pass/fail via GitHub Checks)
+        6. Operation verification and adjustment. (Pending: Requires push to GitHub and observation)
+
+- **Task: Parameterized Test Enhancement**
+    - Goal: Improve test readability, maintainability, and coverage.
+    - Current Sub-task: Applying parametrization to `tests/core/test_chunking_manager.py`.
+    - Plan:
+        1. Identify applicable test areas (manager classes, API endpoint validation). (Ongoing - ChunkingManager identified)
+        2. Refactor existing tests using `@pytest.mark.parametrize`. (Next: Implement for ChunkingManager tests)
+        3. Add new test cases for better coverage of variations.
+        4. Review and merge.
+        5. Extend to other manager tests (EmbeddingManager, RetrieverManager) and backend API tests.
+
 
 ## Resolved Issues
 - `tests/backend/test_main.py::test_chat_query_uses_embedding_strategy_from_metadata` was failing due to mocking issues for `_read_datasources_meta`. Resolved by mocking `open` and `json.load` instead, ensuring the function's internal logic correctly processes controlled data.
