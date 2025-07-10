@@ -50,11 +50,11 @@ This document tracks the status of bug fixes and improvements for the MochiRAG p
 - **Task: Test Performance Optimization (Addressing Timeouts)**
     - Started: YYYY-MM-DD (To be updated)
     - Goal: Reduce test suite execution time and eliminate timeouts.
-    - Current Sub-task: Analyzing `pytest --profile` output.
+    - Current Sub-task: Detailed analysis of profiling data and implementing optimizations.
     - Plan:
         1. Introduce `pytest-profiling` and gather execution time data. (Completed)
-        2. Analyze profiling results to identify slow tests/bottlenecks. (In Progress)
-        3. Optimize identified test cases (improve mocks, reduce unnecessary computation, review fixtures).
+        2. Analyze profiling results to identify slow tests/bottlenecks. (Completed initial overview, now detailed analysis)
+        3. Optimize identified test cases (improve mocks, reduce unnecessary computation, review fixtures). (In Progress)
         4. Evaluate and implement test parallelization (`pytest-xdist`) if necessary.
         5. Review and optimize fixture scopes.
 
