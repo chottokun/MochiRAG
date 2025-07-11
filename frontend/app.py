@@ -121,6 +121,27 @@ def logout():
     # st.success("Logged out successfully!") # Optional feedback
     st.rerun()
 
+# --- Helper functions for API calls ---
+def get_user_datasets(): # Moved to global scope
+    if "token" not in st.session_state or st.session_state.token is None:
+        # Prevent API call if not logged in, though UI should prevent reaching here.
+        st.session_state.datasets = []
+        return False
+    headers = {"Authorization": f"Bearer {st.session_state.token}"}
+    try:
+        response = requests.get(f"{BACKEND_URL}/users/me/datasets/", headers=headers)
+        if response.status_code == 200:
+            st.session_state.datasets = response.json()
+            return True
+        else:
+            st.error(f"Failed to fetch datasets: {response.status_code} - {response.text}")
+            st.session_state.datasets = []
+            return False
+    except Exception as e:
+        st.error(f"Error fetching datasets: {e}")
+        st.session_state.datasets = []
+        return False
+
 # --- UI Rendering ---
 
 # 1. Login/Register View
@@ -327,21 +348,8 @@ else:
         st.title("Document Management")
 
         # --- Helper functions for API calls related to datasets and files ---
-        def get_user_datasets():
-            headers = {"Authorization": f"Bearer {st.session_state.token}"}
-            try:
-                response = requests.get(f"{BACKEND_URL}/users/me/datasets/", headers=headers)
-                if response.status_code == 200:
-                    st.session_state.datasets = response.json()
-                    return True
-                else:
-                    st.error(f"Failed to fetch datasets: {response.status_code} - {response.text}")
-                    st.session_state.datasets = []
-                    return False
-            except Exception as e:
-                st.error(f"Error fetching datasets: {e}")
-                st.session_state.datasets = []
-                return False
+        # def get_user_datasets(): # Already moved to global
+        #     pass # ...
 
         def create_new_dataset(name: str, description: Optional[str] = None):
             headers = {"Authorization": f"Bearer {st.session_state.token}"}
@@ -377,341 +385,221 @@ else:
                 return False
 
         # --- Dataset Management Section ---
-        st.subheader("Your Datasets")
+        # st.subheader("Your Datasets")
 
-        # Create new dataset form
-        with st.expander("Create New Dataset", expanded=False):
-            with st.form("create_dataset_form", clear_on_submit=True):
-                new_dataset_name = st.text_input("Dataset Name*", key="new_ds_name")
-                new_dataset_desc = st.text_area("Description (optional)", key="new_ds_desc")
-                submitted_create_dataset = st.form_submit_button("Create Dataset")
-                if submitted_create_dataset:
-                    if not new_dataset_name.strip():
-                        st.warning("Dataset Name is required.")
-                    else:
-                        create_new_dataset(new_dataset_name, new_dataset_desc)
-                        st.rerun()
+        # # Create new dataset form
+        # with st.expander("Create New Dataset", expanded=False):
+        #     with st.form("create_dataset_form", clear_on_submit=True):
+        #         new_dataset_name = st.text_input("Dataset Name*", key="new_ds_name")
+        #         new_dataset_desc = st.text_area("Description (optional)", key="new_ds_desc")
+        #         submitted_create_dataset = st.form_submit_button("Create Dataset")
+        #         if submitted_create_dataset:
+        #             if not new_dataset_name.strip():
+        #                 st.warning("Dataset Name is required.")
+        #             else:
+        #                 create_new_dataset(new_dataset_name, new_dataset_desc)
+        #                 st.rerun()
 
-        # List existing datasets
-        if not st.session_state.datasets: # Initial load or if empty
-            get_user_datasets()
+        # # List existing datasets
+        # if not st.session_state.datasets: # Initial load or if empty
+        #     get_user_datasets()
 
-        if st.session_state.datasets:
-            st.write("Available Datasets:")
-            # Use columns for better layout: Name | Description | Actions
-            cols_title = st.columns((2, 3, 2, 2)) # Adjust ratios as needed
-            cols_title[0].write("**Name**")
-            cols_title[1].write("**Description**")
-            cols_title[2].write("**Manage Files**")
-            cols_title[3].write("**Delete**")
+        # if st.session_state.datasets:
+        #     st.write("Available Datasets:")
+        #     # Use columns for better layout: Name | Description | Actions
+        #     cols_title = st.columns((2, 3, 2, 2)) # Adjust ratios as needed
+        #     cols_title[0].write("**Name**")
+        #     cols_title[1].write("**Description**")
+        #     cols_title[2].write("**Manage Files**")
+        #     cols_title[3].write("**Delete**")
 
-            for ds in st.session_state.datasets:
-                cols = st.columns((2, 3, 2, 2))
-                cols[0].write(ds.get("name", "N/A"))
-                cols[1].write(ds.get("description") or "_No description_")
+        #     for ds in st.session_state.datasets:
+        #         cols = st.columns((2, 3, 2, 2))
+        #         cols[0].write(ds.get("name", "N/A"))
+        #         cols[1].write(ds.get("description") or "_No description_")
 
-                if cols[2].button("Manage Files", key=f"manage_ds_{ds['dataset_id']}"):
-                    st.session_state.selected_dataset_id = ds["dataset_id"]
-                    st.session_state.files_in_selected_dataset = [] # Clear previous files
-                    # TODO: Fetch files for this dataset (next step)
-                    st.rerun()
+        #         if cols[2].button("Manage Files", key=f"manage_ds_{ds['dataset_id']}"):
+        #             st.session_state.selected_dataset_id = ds["dataset_id"]
+        #             st.session_state.files_in_selected_dataset = [] # Clear previous files
+        #             # TODO: Fetch files for this dataset (next step)
+        #             st.rerun()
 
-                if cols[3].button("Delete Dataset", key=f"delete_ds_{ds['dataset_id']}", type="secondary"):
-                    # Simple confirmation for now, ideally a modal or more prominent warning
-                    st.warning(f"Are you sure you want to delete dataset '{ds['name']}'? This action cannot be undone and will delete all associated files.")
-                    if st.button("Confirm Delete", key=f"confirm_delete_ds_{ds['dataset_id']}", type="primary"):
-                        delete_selected_dataset(ds["dataset_id"])
-                        st.rerun()
-                st.markdown("---")
+        #         if cols[3].button("Delete Dataset", key=f"delete_ds_{ds['dataset_id']}", type="secondary"):
+        #             # Simple confirmation for now, ideally a modal or more prominent warning
+        #             st.warning(f"Are you sure you want to delete dataset '{ds['name']}'? This action cannot be undone and will delete all associated files.")
+        #             if st.button("Confirm Delete", key=f"confirm_delete_ds_{ds['dataset_id']}", type="primary"):
+        #                 delete_selected_dataset(ds["dataset_id"])
+        #                 st.rerun()
+        #         st.markdown("---")
 
-        else:
-            st.info("You don't have any datasets yet. Create one above!")
+        # else:
+        #     st.info("You don't have any datasets yet. Create one above!")
 
-        st.markdown("---") # Separator
+        # st.markdown("---") # Separator
 
-        # --- File Management Section (shown if a dataset is selected) ---
-        if st.session_state.selected_dataset_id:
-            selected_ds_info = next((ds for ds in st.session_state.datasets if ds['dataset_id'] == st.session_state.selected_dataset_id), None)
-            if not selected_ds_info: # Should not happen if selected_dataset_id is valid
-                st.error("Selected dataset not found. Please select another dataset.")
-                st.session_state.selected_dataset_id = None # Reset
-                st.rerun()
+        # # --- File Management Section (shown if a dataset is selected) ---
+        # if st.session_state.selected_dataset_id:
+        #     selected_ds_info = next((ds for ds in st.session_state.datasets if ds['dataset_id'] == st.session_state.selected_dataset_id), None)
+        #     if not selected_ds_info: # Should not happen if selected_dataset_id is valid
+        #         st.error("Selected dataset not found. Please select another dataset.")
+        #         st.session_state.selected_dataset_id = None # Reset
+        #         st.rerun()
 
-            selected_ds_name = selected_ds_info.get("name", "Selected Dataset")
-            st.subheader(f"Manage Files in Dataset: \"{selected_ds_name}\"")
+        #     selected_ds_name = selected_ds_info.get("name", "Selected Dataset")
+        #     st.subheader(f"Manage Files in Dataset: \"{selected_ds_name}\"")
 
-            def get_files_for_selected_dataset():
-                headers = {"Authorization": f"Bearer {st.session_state.token}"}
-                try:
-                    response = requests.get(f"{BACKEND_URL}/users/me/datasets/{st.session_state.selected_dataset_id}/documents/", headers=headers)
-                    if response.status_code == 200:
-                        st.session_state.files_in_selected_dataset = response.json()
-                    else:
-                        st.error(f"Failed to fetch files for dataset: {response.status_code} - {response.text}")
-                        st.session_state.files_in_selected_dataset = []
-                except Exception as e:
-                    st.error(f"Error fetching files for dataset: {e}")
-                    st.session_state.files_in_selected_dataset = []
+        #     def get_files_for_selected_dataset():
+        #         headers = {"Authorization": f"Bearer {st.session_state.token}"}
+        #         try:
+        #             response = requests.get(f"{BACKEND_URL}/users/me/datasets/{st.session_state.selected_dataset_id}/documents/", headers=headers)
+        #             if response.status_code == 200:
+        #                 st.session_state.files_in_selected_dataset = response.json()
+        #             else:
+        #                 st.error(f"Failed to fetch files for dataset: {response.status_code} - {response.text}")
+        #                 st.session_state.files_in_selected_dataset = []
+        #         except Exception as e:
+        #             st.error(f"Error fetching files for dataset: {e}")
+        #             st.session_state.files_in_selected_dataset = []
 
-            def delete_file_from_selected_dataset(data_source_id_to_delete: str):
-                headers = {"Authorization": f"Bearer {st.session_state.token}"}
-                try:
-                    response = requests.delete(f"{BACKEND_URL}/users/me/datasets/{st.session_state.selected_dataset_id}/documents/{data_source_id_to_delete}/", headers=headers)
-                    if response.status_code == 204:
-                        st.success(f"File deleted successfully!")
-                        get_files_for_selected_dataset() # Refresh file list
-                        return True
-                    else:
-                        st.error(f"Failed to delete file: {response.status_code} - {response.text}")
-                        return False
-                except Exception as e:
-                    st.error(f"Error deleting file: {e}")
-                    return False
+        #     def delete_file_from_selected_dataset(data_source_id_to_delete: str):
+        #         headers = {"Authorization": f"Bearer {st.session_state.token}"}
+        #         try:
+        #             response = requests.delete(f"{BACKEND_URL}/users/me/datasets/{st.session_state.selected_dataset_id}/documents/{data_source_id_to_delete}/", headers=headers)
+        #             if response.status_code == 204:
+        #                 st.success(f"File deleted successfully!")
+        #                 get_files_for_selected_dataset() # Refresh file list
+        #                 return True
+        #             else:
+        #                 st.error(f"Failed to delete file: {response.status_code} - {response.text}")
+        #                 return False
+        #         except Exception as e:
+        #             st.error(f"Error deleting file: {e}")
+        #             return False
 
-            # Load files for the selected dataset if not already loaded or if selection changed
-            # This condition might need refinement to avoid excessive reloads.
-            # For now, simple check: if files list is empty for a selected dataset, try to load.
-            if not st.session_state.files_in_selected_dataset and st.session_state.selected_dataset_id:
-                 get_files_for_selected_dataset()
+        #     # Load files for the selected dataset if not already loaded or if selection changed
+        #     if not st.session_state.files_in_selected_dataset and st.session_state.selected_dataset_id:
+        #          get_files_for_selected_dataset()
 
 
-            # --- Vector Store Strategy Selection for Upload ---
-            st.markdown("#### Upload New Document to this Dataset")
-            # These strategy selectors are now part of the file management for a selected dataset
-            available_embedding_strategies = ["default"]
-            if embedding_manager:
-                try:
-                    available_embedding_strategies = embedding_manager.get_available_strategies()
-                except Exception as e:
-                    st.error(f"Failed to load embedding strategies: {e}")
-
-            upload_embedding_strategy = st.selectbox(
-                "Choose Embedding Strategy for Upload:",
-                options=available_embedding_strategies,
-                index=0,
-                key="upload_embedding_strategy_selector"
-            )
-
-            available_chunking_strategies = ["default"]
-            if chunking_manager:
-                try:
-                    available_chunking_strategies = chunking_manager.get_available_strategies()
-                except Exception as e:
-                    st.error(f"Failed to load chunking strategies: {e}")
-
-            upload_chunking_strategy = st.selectbox(
-                "Choose Chunking Strategy for Upload:",
-                options=available_chunking_strategies,
-                index=0,
-                key="upload_chunking_strategy_selector"
-            )
-            upload_chunk_size = st.number_input("Chunk Size (if applicable)", value=1000, min_value=100, step=50, key="upload_chunk_size_input")
-            upload_chunk_overlap = st.number_input("Chunk Overlap (if applicable)", value=200, min_value=0, step=20, key="upload_chunk_overlap_input")
+        #     # --- Vector Store Strategy Selection for Upload ---
+        #     st.markdown("#### Upload New Document to this Dataset")
+        #     available_embedding_strategies = ["default"]
+        #     if embedding_manager:
+        #         try:
+        #             available_embedding_strategies = embedding_manager.get_available_strategies()
+        #         except Exception as e:
+        #             st.error(f"Failed to load embedding strategies from manager: {e}")
+        #             available_embedding_strategies = ["default"] # Fallback
+        #     else:
+        #         available_embedding_strategies = ["default"]
 
 
-            # --- File Upload Form ---
-            with st.form("upload_file_to_dataset_form", clear_on_submit=True):
-                uploaded_file_ds = st.file_uploader("Upload a document (TXT, MD, PDF)", type=["txt", "md", "pdf"], key="file_uploader_ds")
-                upload_file_submit_ds = st.form_submit_button("Upload to Dataset")
+        #     upload_embedding_strategy = st.selectbox(
+        #         "Choose Embedding Strategy for Upload:",
+        #         options=available_embedding_strategies,
+        #         index=0,
+        #         key="upload_embedding_strategy_selector"
+        #     )
 
-            if upload_file_submit_ds and uploaded_file_ds:
-                if not st.session_state.selected_dataset_id:
-                    st.error("No dataset selected for upload.")
-                else:
-                    upload_params = {
-                        "embedding_strategy": upload_embedding_strategy if upload_embedding_strategy != "default" else None,
-                        "chunking_strategy": upload_chunking_strategy if upload_chunking_strategy != "default" else None,
-                    }
-                    # Assuming 'recursive' in strategy name implies these params are relevant
-                    if upload_chunking_strategy and "recursive" in upload_chunking_strategy.lower():
-                        upload_params["chunking_params"] = {
-                            "chunk_size": upload_chunk_size,
-                            "chunk_overlap": upload_chunk_overlap
-                        }
+        #     available_chunking_strategies = ["default"]
+        #     if chunking_manager:
+        #         try:
+        #             available_chunking_strategies = chunking_manager.get_available_strategies()
+        #         except Exception as e:
+        #             st.error(f"Failed to load chunking strategies from manager: {e}")
+        #             available_chunking_strategies = ["default"] # Fallback
+        #     else:
+        #         available_chunking_strategies = ["default"]
 
-                    form_data_payload = {
-                        'embedding_strategy': upload_params["embedding_strategy"],
-                        'chunking_strategy': upload_params["chunking_strategy"],
-                    }
-                    if upload_params.get("chunking_params"):
-                        form_data_payload['chunking_params_json'] = json.dumps(upload_params["chunking_params"])
-
-                    files_payload = {"file": (uploaded_file_ds.name, uploaded_file_ds, uploaded_file_ds.type)}
-                    headers_auth = {"Authorization": f"Bearer {st.session_state.token}"}
-
-                    try:
-                        resp = requests.post(
-                            f"{BACKEND_URL}/users/me/datasets/{st.session_state.selected_dataset_id}/documents/upload/",
-                            headers=headers_auth,
-                            files=files_payload,
-                            data=form_data_payload,
-                            timeout=120
-                        )
-                        if resp.status_code == 200: # Expecting 200 from backend upon successful upload and processing
-                            st.success(f"Document '{uploaded_file_ds.name}' uploaded successfully to dataset '{selected_ds_name}'.")
-                            get_files_for_selected_dataset() # Refresh file list
-                        else:
-                            st.error(f"Upload failed: {resp.status_code} - {resp.text}")
-                    except Exception as e:
-                        st.error(f"Error during upload: {e}")
-                    st.rerun()
-
-            st.markdown("---")
-            st.markdown("#### Documents in this Dataset")
-            if st.button("Refresh File List", key="refresh_files_btn"):
-                get_files_for_selected_dataset()
-                st.rerun()
-
-            if st.session_state.files_in_selected_dataset:
-                # Display files in columns
-                cols_files_title = st.columns((3, 2, 2, 1))
-                cols_files_title[0].write("**Filename**")
-                cols_files_title[1].write("**Uploaded At**")
-                cols_files_title[2].write("**Chunks**")
-                cols_files_title[3].write("**Delete**")
-
-                for f_meta in st.session_state.files_in_selected_dataset:
-                    cols_f = st.columns((3, 2, 2, 1))
-                    cols_f[0].write(f_meta.get("original_filename", "N/A"))
-                    cols_f[1].write(f_meta.get("uploaded_at", "-").split("T")[0]) # Just date for brevity
-                    cols_f[2].write(str(f_meta.get("chunk_count", "-")))
-                    if cols_f[3].button("🗑️", key=f"delete_file_{f_meta['data_source_id']}", help="Delete this file"):
-                        # Simple confirmation, could be improved with a modal
-                        st.warning(f"Delete file '{f_meta['original_filename']}'?")
-                        if st.button("Confirm Delete File", key=f"confirm_delete_file_{f_meta['data_source_id']}", type="primary"):
-                           delete_file_from_selected_dataset(f_meta["data_source_id"])
-                           st.rerun()
-                st.markdown("---")
-            else:
-                st.info("No documents found in this dataset. Upload one above.")
-
-        else: # No dataset selected
-            st.info("Select a dataset from the list above to manage its files or upload new documents.")
+        #     upload_chunking_strategy = st.selectbox(
+        #         "Choose Chunking Strategy for Upload:",
+        #         options=available_chunking_strategies,
+        #         index=0,
+        #         key="upload_chunking_strategy_selector"
+        #     )
+        #     upload_chunk_size = st.number_input("Chunk Size (if applicable)", value=1000, min_value=100, step=50, key="upload_chunk_size_input")
+        #     upload_chunk_overlap = st.number_input("Chunk Overlap (if applicable)", value=200, min_value=0, step=20, key="upload_chunk_overlap_input")
 
 
-        # --- Vector Store Strategy Selection (This part will be for file upload within a selected dataset) ---
-        # This section needs to be moved/adapted to be part of the "File Management Section"
-        # st.subheader("Vector Store Processing Strategies") # Keep this for context if file upload is shown
+        #     # --- File Upload Form ---
+        #     with st.form("upload_file_to_dataset_form", clear_on_submit=True):
+        #         uploaded_file_ds = st.file_uploader("Upload a document (TXT, MD, PDF)", type=["txt", "md", "pdf"], key="file_uploader_ds")
+        #         upload_file_submit_ds = st.form_submit_button("Upload to Dataset")
 
-        # available_embedding_strategies = ["default"]
-        # if embedding_manager:
-        #     try:
-        #         available_embedding_strategies = embedding_manager.get_available_strategies()
-            except Exception as e:
-                st.error(f"Failed to load embedding strategies: {e}")
+        #     if upload_file_submit_ds and uploaded_file_ds:
+        #         if not st.session_state.selected_dataset_id:
+        #             st.error("No dataset selected for upload.")
+                # else: # Temporarily commenting out the upload logic
+                    # upload_params = {
+                    #     "embedding_strategy": upload_embedding_strategy if upload_embedding_strategy != "default" else None,
+                    #     "chunking_strategy": upload_chunking_strategy if upload_chunking_strategy != "default" else None,
+                    # }
+                    # # Assuming 'recursive' in strategy name implies these params are relevant
+                    # if upload_chunking_strategy and "recursive" in upload_chunking_strategy.lower():
+                    #     upload_params["chunking_params"] = {
+                    #         "chunk_size": upload_chunk_size,
+                    #         "chunk_overlap": upload_chunk_overlap
+                    #     }
 
-        selected_embedding_strategy = st.selectbox(
-            "Choose Embedding Strategy:",
-            options=available_embedding_strategies,
-            index=0,
-            key="embedding_strategy_selector"
-        )
+                    # form_data_payload = {
+                    #     'embedding_strategy': upload_params["embedding_strategy"],
+                    #     'chunking_strategy': upload_params["chunking_strategy"],
+                    # }
+                    # if upload_params.get("chunking_params"):
+                    #     form_data_payload['chunking_params_json'] = json.dumps(upload_params["chunking_params"])
 
-        available_chunking_strategies = ["default"]
-        if chunking_manager:
-            try:
-                available_chunking_strategies = chunking_manager.get_available_strategies()
-            except Exception as e:
-                st.error(f"Failed to load chunking strategies: {e}")
+                    # files_payload = {"file": (uploaded_file_ds.name, uploaded_file_ds, uploaded_file_ds.type)}
+                    # headers_auth = {"Authorization": f"Bearer {st.session_state.token}"}
 
-        selected_chunking_strategy = st.selectbox(
-            "Choose Chunking Strategy:",
-            options=available_chunking_strategies,
-            index=0,
-            key="chunking_strategy_selector"
-        )
+                    # try:
+                    #     resp = requests.post(
+                    #         f"{BACKEND_URL}/users/me/datasets/{st.session_state.selected_dataset_id}/documents/upload/",
+                    #         headers=headers_auth,
+                    #         files=files_payload,
+                    #         data=form_data_payload,
+                    #         timeout=120
+                    #     )
+                    #     if resp.status_code == 200: # Expecting 200 from backend upon successful upload and processing
+                    #         st.success(f"Document '{uploaded_file_ds.name}' uploaded successfully to dataset '{selected_ds_name}'.")
+                    #         get_files_for_selected_dataset() # Refresh file list
+                    #     else:
+                    #         st.error(f"Upload failed: {resp.status_code} - {resp.text}")
+                    # except Exception as e:
+                    #     st.error(f"Error during upload: {e}")
+                    # st.rerun()
 
-        # チャンキングパラメータ入力 (例: chunk_size)
-        # chunk_params_json = st.text_input("Chunking Parameters (JSON string, optional)", value='{"chunk_size": 1000, "chunk_overlap": 200}')
-        # よりユーザーフレンドリーなUIも検討可能 (例: 数値入力フィールド)
-        custom_chunk_size = st.number_input("Chunk Size (for recursive)", value=1000, min_value=100, step=50, key="chunk_size_input")
-        custom_chunk_overlap = st.number_input("Chunk Overlap (for recursive)", value=200, min_value=0, step=20, key="chunk_overlap_input")
+            # st.markdown("---") # This line should be at the same indent as the `if upload_file_submit_ds...`
+            # st.markdown("#### Documents in this Dataset")
+            # if st.button("Refresh File List", key="refresh_files_btn"):
+            #     get_files_for_selected_dataset()
+            #     st.rerun()
 
+            # if st.session_state.files_in_selected_dataset:
+            #     # Display files in columns
+            #     cols_files_title = st.columns((3, 2, 2, 1))
+            #     cols_files_title[0].write("**Filename**")
+            #     cols_files_title[1].write("**Uploaded At**")
+            #     cols_files_title[2].write("**Chunks**")
+            #     cols_files_title[3].write("**Delete**")
 
-        # --- ドキュメントアップロード ---
-        st.subheader("Upload New Document")
-        with st.form("upload_form", clear_on_submit=True):
-            uploaded_file = st.file_uploader("Upload a document", type=["txt", "md", "pdf"], accept_multiple_files=False) # 一旦単一ファイルに
-            upload_submit = st.form_submit_button("Upload Document")
+            #     for f_meta in st.session_state.files_in_selected_dataset:
+            #         cols_f = st.columns((3, 2, 2, 1))
+            #         cols_f[0].write(f_meta.get("original_filename", "N/A"))
+            #         cols_f[1].write(f_meta.get("uploaded_at", "-").split("T")[0]) # Just date for brevity
+            #         cols_f[2].write(str(f_meta.get("chunk_count", "-")))
+            #         if cols_f[3].button("🗑️", key=f"delete_file_{f_meta['data_source_id']}", help="Delete this file"):
+            #             # Simple confirmation, could be improved with a modal
+            #             st.warning(f"Delete file '{f_meta['original_filename']}'?")
+            #             if st.button("Confirm Delete File", key=f"confirm_delete_file_{f_meta['data_source_id']}", type="primary"):
+            #                delete_file_from_selected_dataset(f_meta["data_source_id"])
+            #                st.rerun()
+            #     st.markdown("---")
+            # else:
+            #     st.info("No documents found in this dataset. Upload one above.")
 
-        if upload_submit and uploaded_file:
-            # 選択された戦略とパラメータを準備
-            upload_request_data = {
-                "embedding_strategy": selected_embedding_strategy if selected_embedding_strategy != "default" else None,
-                "chunking_strategy": selected_chunking_strategy if selected_chunking_strategy != "default" else None,
-            }
-            # RecursiveTextSplitterの場合のパラメータ設定（他の戦略では異なるUIが必要になる可能性）
-            if selected_chunking_strategy and "recursive" in selected_chunking_strategy:
-                 upload_request_data["chunking_params"] = {
-                     "chunk_size": custom_chunk_size,
-                     "chunk_overlap": custom_chunk_overlap
-                 }
-
-            try:
-                headers = {"Authorization": f"Bearer {st.session_state.token}"}
-                # ファイルとリクエストデータを一緒に送信 (multipart/form-data)
-                # FastAPI側で Body() と File() を同時に受け取るには工夫が必要な場合がある
-                # ここでは、upload_request_data をJSON文字列としてファイルと一緒に送信する
-                files = {
-                    "file": (uploaded_file.name, uploaded_file, uploaded_file.type),
-                    # DocumentUploadRequestをJSON文字列として送信
-                    "upload_request": (None, json.dumps(upload_request_data), "application/json")
-                }
-
-                # バックエンドAPIの /documents/upload/ は DocumentUploadRequest を Body(...) で受け取る想定
-                # ファイルアップロードとJSONボディを同時に扱うには、FastAPI側で工夫が必要。
-                # 一般的なのは、JSONボディをFormデータとして送信するか、
-                # リクエストを2段階に分ける（メタ情報POST -> ファイルPUTなど）。
-                # ここでは、Body()とFile()を同時に受け付けるようにFastAPIが設定されていると仮定する。
-                # しかし、requestsライブラリでこれを単純に行うのは難しい。
-                # Bodyパラメータは通常 application/json として送られる。
-                # 解決策: FastAPIエンドポイントを修正し、戦略パラメータをフォームデータとして受け取る。
-                # または、戦略パラメータをクエリパラメータとして渡す。今回はフォームデータとして修正する想定で進める。
-
-                form_data = {
-                    'embedding_strategy': upload_request_data["embedding_strategy"],
-                    'chunking_strategy': upload_request_data["chunking_strategy"],
-                }
-                if upload_request_data.get("chunking_params"):
-                    form_data['chunking_params_json'] = json.dumps(upload_request_data["chunking_params"])
-
-
-                # `files` に `upload_request` を含めず、`data` でフォームデータを渡す
-                actual_files = {"file": (uploaded_file.name, uploaded_file, uploaded_file.type)}
-                resp = requests.post(
-                    f"{BACKEND_URL}/documents/upload/",
-                    headers=headers,
-                    files=actual_files, # ファイルのみ
-                    data=form_data,     # 戦略パラメータをフォームデータとして送信
-                    timeout=120
-                )
-
-                if resp.status_code == 200:
-                    st.success(f"Upload succeeded: {uploaded_file.name}")
-                else:
-                    st.error(f"Upload failed: {resp.status_code} - {resp.text}")
-            except Exception as e:
-                st.error(f"Upload error: {e}")
-            # st.session_state.chat_loading = False # Document Managementページなのでchat_loadingは不要
-            st.rerun()
-
-        # --- ドキュメント一覧表示 ---
-        st.subheader("Your Uploaded Documents")
-        try:
-            headers = {"Authorization": f"Bearer {st.session_state.token}"}
-            resp = requests.get(f"{BACKEND_URL}/documents/", headers=headers)
-            if resp.status_code == 200:
-                docs = resp.json()
-                if docs:
-                    for doc in docs:
-                        st.markdown(f"- **{doc['original_filename']}** (ID: `{doc['data_source_id']}`) - {doc['status']} - {doc['uploaded_at']} - チャンク数: {doc.get('chunk_count', '-')}")
-                else:
-                    st.info("No documents uploaded yet.")
-            else:
-                st.error(f"Failed to fetch documents: {resp.text}")
-        except Exception as e:
-            st.error(f"Error fetching documents: {e}")
-
+        # else: # No dataset selected
+        #     st.info("Select a dataset from the list above to manage its files or upload new documents.")
+    # This else corresponds to: if st.session_state.main_app_page == "Chat" / elif ... == "Document Management"
     else:
         st.title("Welcome")
         st.write("Select a page from the sidebar.")
