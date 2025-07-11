@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, List
 import uuid
+from datetime import datetime
 
 class UserInDB(BaseModel):
     user_id: uuid.UUID = Field(default_factory=uuid.uuid4)
@@ -28,8 +29,25 @@ class User(BaseModel):
     email: str
     disabled: Optional[bool] = None
 
+class Dataset(BaseModel):
+    dataset_id: uuid.UUID = Field(default_factory=uuid.uuid4)
+    name: str = Field(..., min_length=1, max_length=100)
+    user_id: uuid.UUID
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    description: Optional[str] = None
+
+class DatasetCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    description: Optional[str] = None
+
+class DatasetUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    description: Optional[str] = None
+
 class DataSourceMeta(BaseModel):
     data_source_id: str # Typically the filename or a unique ID for the source
+    dataset_id: uuid.UUID # Link to the Dataset
     original_filename: str
     status: str # e.g., "uploaded", "processing", "processed", "failed"
     uploaded_at: str # ISO format timestamp
@@ -47,7 +65,8 @@ class DocumentUploadRequest(BaseModel): # 新規: ドキュメントアップロ
 
 class ChatQueryRequest(BaseModel):
     question: str
-    data_source_ids: Optional[List[str]] = None
+    data_source_ids: Optional[List[str]] = None # Specific file IDs to query
+    dataset_ids: Optional[List[uuid.UUID]] = None # Specific dataset IDs to query (all files within them)
     rag_strategy: Optional[str] = "basic" # Default to basic strategy
 
 class ChatQueryResponse(BaseModel):

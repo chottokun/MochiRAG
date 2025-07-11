@@ -108,8 +108,9 @@ def get_rag_response(
     user_id: str,
     question: str,
     data_source_ids: Optional[List[str]] = None,
+    dataset_ids: Optional[List[str]] = None, # 追加: データセットIDリスト
     rag_strategy: RAG_STRATEGY_TYPE = "basic",
-    embedding_strategy_for_retrieval: Optional[str] = None # 追加
+    embedding_strategy_for_retrieval: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Retrieves relevant documents using the specified RAG strategy and generates a response.
@@ -130,7 +131,8 @@ def get_rag_response(
             name=rag_strategy,
             user_id=user_id,
             embedding_strategy_name=embedding_strategy_for_retrieval,
-            data_source_ids=data_source_ids
+            data_source_ids=data_source_ids,
+            dataset_ids=dataset_ids # 追加
             # n_results は各リトリーバー戦略のデフォルト、または RetrieverManager で設定可能
         )
     except Exception as e:

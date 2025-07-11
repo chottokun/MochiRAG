@@ -80,7 +80,8 @@ class VectorStoreManager:
         documents: List[Document], # 元の（チャンク分割前）ドキュメント
         embedding_strategy_name: str,
         chunking_strategy_name: str,
-        chunking_params: Optional[Dict[str, Any]] = None
+        chunking_params: Optional[Dict[str, Any]] = None,
+        dataset_id: Optional[str] = None # 追加: データセットID
     ) -> int:
         """
         指定された戦略でドキュメントを処理し、ベクトルストアに追加する。
@@ -111,6 +112,8 @@ class VectorStoreManager:
                 chunk.metadata = {}
             chunk.metadata["user_id"] = user_id
             chunk.metadata["data_source_id"] = data_source_id
+            if dataset_id:
+                chunk.metadata["dataset_id"] = dataset_id
             # 選択された戦略のメタデータも保存しておくと後で役立つ可能性がある
             chunk.metadata["embedding_strategy"] = embedding_strategy_name
             chunk.metadata["chunking_strategy"] = chunking_strategy.get_name() # パラメータ含む名前
@@ -136,6 +139,7 @@ class VectorStoreManager:
         embedding_strategy_name: str, # 検索時にもエンベディング戦略を指定
         n_results: int = 5,
         data_source_ids: Optional[List[str]] = None,
+        dataset_ids: Optional[List[str]] = None, # 追加: データセットIDリストでのフィルタ
         filter_criteria: Optional[Dict[str, Any]] = None # 追加のメタデータフィルタ
     ) -> List[Document]:
         """
@@ -149,22 +153,29 @@ class VectorStoreManager:
         if data_source_ids:
             if len(data_source_ids) == 1:
                 base_filter_conditions.append({"data_source_id": data_source_ids[0]})
-            else:
+            elif len(data_source_ids) > 1:
                 base_filter_conditions.append({"data_source_id": {"$in": data_source_ids}})
+
+        if dataset_ids:
+            if len(dataset_ids) == 1:
+                base_filter_conditions.append({"dataset_id": dataset_ids[0]})
+            elif len(dataset_ids) > 1: # dataset_ids がリストで複数の場合
+                base_filter_conditions.append({"dataset_id": {"$in": dataset_ids}})
 
         # 提供された追加フィルタをマージ
         # ChromaDBの $and 形式に合わせる
-        final_filter_list = base_filter_conditions
-        if filter_criteria:
+        final_filter_list = base_filter_conditions # base_filter_conditions は既にリストになっている
+        if filter_criteria: # filter_criteria は Dict[str, Any]
             for key, value in filter_criteria.items():
-                final_filter_list.append({key: value})
+                final_filter_list.append({key: value}) # 個別の条件として追加
 
         chroma_filter: Optional[Dict[str, Any]] = None
-        if final_filter_list:
+        if final_filter_list: # final_filter_list が空でない場合
             if len(final_filter_list) > 1:
                 chroma_filter = {"$and": final_filter_list}
-            else: # 条件が1つだけの場合
+            elif len(final_filter_list) == 1: # 条件が1つだけの場合
                 chroma_filter = final_filter_list[0]
+            # else final_filter_list is empty, so chroma_filter remains None (no filter)
 
         logger.info(f"Querying ChromaDB for user '{user_id}' with embedding '{embedding_strategy_name}', query: '{query[:50]}...', filter: {chroma_filter}")
 

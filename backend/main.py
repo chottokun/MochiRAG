@@ -11,7 +11,8 @@ from fastapi.security import OAuth2PasswordRequestForm
 from . import auth
 from .models import (
     User, UserCreate, Token, DataSourceMeta,
-    ChatQueryRequest, ChatQueryResponse # DocumentUploadRequest は削除 (フォームパラメータで受け取るため)
+    ChatQueryRequest, ChatQueryResponse, # DocumentUploadRequest は削除 (フォームパラメータで受け取るため)
+    Dataset, DatasetCreate, DatasetUpdate # 追加: データセットモデル
 )
 
 # Core module imports - assuming they are structured to be importable
@@ -41,42 +42,79 @@ except ImportError as e:
 
 app = FastAPI()
 
-# --- Metadata Store for Uploaded Documents ---
-DATASOURCES_META_PATH = Path(__file__).resolve().parent.parent / "data" / "datasources_meta.json"
-TMP_UPLOAD_DIR = Path(__file__).resolve().parent.parent / "data" / "tmp_uploads"
-TMP_UPLOAD_DIR.mkdir(parents=True, exist_ok=True) # Ensure it exists
+# --- Metadata Store Configuration ---
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-def _ensure_metadata_file_exists():
+DATASETS_META_PATH = DATA_DIR / "datasets_meta.json" # For Dataset objects
+DATASOURCES_META_PATH = DATA_DIR / "datasources_meta.json" # For DataSourceMeta objects (file metadata)
+TMP_UPLOAD_DIR = DATA_DIR / "tmp_uploads"
+TMP_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+# --- Helper functions for Dataset Metadata ---
+def _ensure_datasets_meta_file_exists():
+    if not DATASETS_META_PATH.exists():
+        with open(DATASETS_META_PATH, "w", encoding="utf-8") as f:
+            json.dump({}, f) # User ID will be the key, value is a list of Dataset objects
+
+def _read_datasets_meta() -> Dict[str, List[Dataset]]:
+    _ensure_datasets_meta_file_exists()
+    with open(DATASETS_META_PATH, "r", encoding="utf-8") as f:
+        try:
+            data = json.load(f)
+            parsed_data: Dict[str, List[Dataset]] = {}
+            for user_id_str, datasets_json_list in data.items():
+                parsed_data[user_id_str] = [Dataset(**ds_json) for ds_json in datasets_json_list]
+            return parsed_data
+        except json.JSONDecodeError:
+            return {}
+
+def _write_datasets_meta(data: Dict[str, List[Dataset]]):
+    _ensure_datasets_meta_file_exists()
+    serializable_data: Dict[str, List[Dict[str, Any]]] = {}
+    for user_id_str, datasets_list in data.items():
+        serializable_data[user_id_str] = [ds.model_dump(mode="json") for ds in datasets_list]
+    with open(DATASETS_META_PATH, "w", encoding="utf-8") as f:
+        json.dump(serializable_data, f, indent=4)
+
+# --- Helper functions for DataSource (File) Metadata ---
+def _ensure_datasources_meta_file_exists():
     if not DATASOURCES_META_PATH.exists():
         with open(DATASOURCES_META_PATH, "w", encoding="utf-8") as f:
+            # New structure: { "user_id": { "dataset_id": [DataSourceMeta, ...], ... }, ... }
             json.dump({}, f)
 
-def _read_datasources_meta() -> Dict[str, List[DataSourceMeta]]:
-    _ensure_metadata_file_exists()
+def _read_datasources_meta() -> Dict[str, Dict[str, List[DataSourceMeta]]]:
+    _ensure_datasources_meta_file_exists()
     with open(DATASOURCES_META_PATH, "r", encoding="utf-8") as f:
         try:
             data = json.load(f)
-            # Convert list of dicts to list of DataSourceMeta objects
-            # Pydantic can parse this automatically if the structure matches
-            parsed_data: Dict[str, List[DataSourceMeta]] = {}
-            for user_id, meta_list_json in data.items():
-                parsed_data[user_id] = [DataSourceMeta(**meta) for meta in meta_list_json]
+            parsed_data: Dict[str, Dict[str, List[DataSourceMeta]]] = {}
+            for user_id_str, user_datasets_json in data.items():
+                parsed_data[user_id_str] = {}
+                for dataset_id_str, ds_meta_list_json in user_datasets_json.items():
+                    parsed_data[user_id_str][dataset_id_str] = [
+                        DataSourceMeta(**meta) for meta in ds_meta_list_json
+                    ]
             return parsed_data
         except json.JSONDecodeError:
-            return {} # Return empty if file is corrupted or empty
+            return {}
 
-def _write_datasources_meta(data: Dict[str, List[DataSourceMeta]]):
-    _ensure_metadata_file_exists()
-    # Convert DataSourceMeta objects back to dicts for JSON serialization
-    serializable_data: Dict[str, List[Dict[str, Any]]] = {}
-    for user_id, meta_list_pydantic in data.items():
-        serializable_data[user_id] = [meta.model_dump() for meta in meta_list_pydantic]
-
+def _write_datasources_meta(data: Dict[str, Dict[str, List[DataSourceMeta]]]):
+    _ensure_datasources_meta_file_exists()
+    serializable_data: Dict[str, Dict[str, List[Dict[str, Any]]]] = {}
+    for user_id_str, user_datasets_pydantic in data.items():
+        serializable_data[user_id_str] = {}
+        for dataset_id_str, ds_meta_list_pydantic in user_datasets_pydantic.items():
+            serializable_data[user_id_str][dataset_id_str] = [
+                meta.model_dump(mode="json") for meta in ds_meta_list_pydantic
+            ]
     with open(DATASOURCES_META_PATH, "w", encoding="utf-8") as f:
         json.dump(serializable_data, f, indent=4)
 
-# Initialize metadata file on startup (useful for the first run)
-_ensure_metadata_file_exists()
+# Initialize metadata files on startup
+_ensure_datasets_meta_file_exists()
+_ensure_datasources_meta_file_exists()
 
 # --- Endpoints ---
 
@@ -112,36 +150,201 @@ async def create_user_endpoint(user_data: UserCreate): # Renamed from create_use
 async def read_users_me(current_user: User = Depends(auth.get_current_active_user)):
     return current_user
 
-@app.post("/documents/upload/", response_model=DataSourceMeta)
-async def upload_document(
+# --- Dataset Endpoints ---
+
+@app.post("/users/me/datasets/", response_model=Dataset, status_code=status.HTTP_201_CREATED)
+async def create_dataset(
+    dataset_create: DatasetCreate,
+    current_user: User = Depends(auth.get_current_active_user)
+):
+    user_id_str = str(current_user.user_id)
+    datasets_meta = _read_datasets_meta()
+    user_datasets = datasets_meta.get(user_id_str, [])
+
+    # Check for duplicate dataset name for the same user
+    if any(ds.name == dataset_create.name for ds in user_datasets):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Dataset with name '{dataset_create.name}' already exists."
+        )
+
+    new_dataset = Dataset(
+        user_id=current_user.user_id,
+        name=dataset_create.name,
+        description=dataset_create.description
+        # dataset_id, created_at, updated_at are auto-generated
+    )
+    user_datasets.append(new_dataset)
+    datasets_meta[user_id_str] = user_datasets
+    _write_datasets_meta(datasets_meta)
+    return new_dataset
+
+@app.get("/users/me/datasets/", response_model=List[Dataset])
+async def list_datasets(current_user: User = Depends(auth.get_current_active_user)):
+    user_id_str = str(current_user.user_id)
+    datasets_meta = _read_datasets_meta()
+    return datasets_meta.get(user_id_str, [])
+
+@app.get("/users/me/datasets/{dataset_id}/", response_model=Dataset)
+async def get_dataset(
+    dataset_id: uuid.UUID,
+    current_user: User = Depends(auth.get_current_active_user)
+):
+    user_id_str = str(current_user.user_id)
+    datasets_meta = _read_datasets_meta()
+    user_datasets = datasets_meta.get(user_id_str, [])
+
+    dataset = next((ds for ds in user_datasets if ds.dataset_id == dataset_id), None)
+    if not dataset:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found")
+    return dataset
+
+@app.put("/users/me/datasets/{dataset_id}/", response_model=Dataset)
+async def update_dataset(
+    dataset_id: uuid.UUID,
+    dataset_update: DatasetUpdate,
+    current_user: User = Depends(auth.get_current_active_user)
+):
+    user_id_str = str(current_user.user_id)
+    datasets_meta = _read_datasets_meta()
+    user_datasets = datasets_meta.get(user_id_str, [])
+
+    dataset_idx = -1
+    for i, ds in enumerate(user_datasets):
+        if ds.dataset_id == dataset_id:
+            dataset_idx = i
+            break
+
+    if dataset_idx == -1:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found")
+
+    existing_dataset = user_datasets[dataset_idx]
+
+    # Check for duplicate name if name is being changed
+    if dataset_update.name is not None and dataset_update.name != existing_dataset.name:
+        if any(ds.name == dataset_update.name for ds in user_datasets if ds.dataset_id != dataset_id):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Dataset with name '{dataset_update.name}' already exists."
+            )
+
+    update_data = dataset_update.model_dump(exclude_unset=True)
+    updated_dataset = existing_dataset.model_copy(update=update_data)
+    updated_dataset.updated_at = datetime.utcnow()
+
+    user_datasets[dataset_idx] = updated_dataset
+    datasets_meta[user_id_str] = user_datasets
+    _write_datasets_meta(datasets_meta)
+    return updated_dataset
+
+@app.delete("/users/me/datasets/{dataset_id}/", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_dataset(
+    dataset_id: uuid.UUID,
+    current_user: User = Depends(auth.get_current_active_user)
+):
+    user_id_str = str(current_user.user_id)
+    dataset_id_str = str(dataset_id)
+
+    # Delete from datasets_meta.json
+    datasets_meta = _read_datasets_meta()
+    user_datasets = datasets_meta.get(user_id_str, [])
+    dataset_to_delete = next((ds for ds in user_datasets if ds.dataset_id == dataset_id), None)
+
+    if not dataset_to_delete:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found")
+
+    user_datasets = [ds for ds in user_datasets if ds.dataset_id != dataset_id]
+    if user_datasets:
+        datasets_meta[user_id_str] = user_datasets
+    else:
+        datasets_meta.pop(user_id_str, None) # Remove user entry if no datasets left
+    _write_datasets_meta(datasets_meta)
+
+    # Delete associated files from datasources_meta.json and vector store
+    datasources_meta = _read_datasources_meta()
+    user_datasources = datasources_meta.get(user_id_str, {})
+
+    if dataset_id_str in user_datasources:
+        files_in_dataset = user_datasources.pop(dataset_id_str, [])
+        if not user_datasources: # if no other datasets for this user
+            datasources_meta.pop(user_id_str, None)
+        else:
+            datasources_meta[user_id_str] = user_datasources
+        _write_datasources_meta(datasources_meta)
+
+        # Delete documents from vector store for each file in the dataset
+        for file_meta in files_in_dataset:
+            try:
+                # Assuming vector_store_manager can delete by user_id and data_source_id
+                # We need to pass dataset_id as well if the VSM expects it for namespacing
+                vector_store_manager.delete_documents(
+                    user_id=user_id_str,
+                    data_source_id=file_meta.data_source_id
+                    # dataset_id=dataset_id_str # This might be needed depending on VSM implementation
+                )
+            except Exception as e:
+                # Log error, but continue deletion process
+                # Consider how to handle partial failures (e.g., if VSM deletion fails)
+                print(f"Error deleting {file_meta.data_source_id} from vector store: {e}")
+                # Potentially re-raise or collect errors to return to user if critical
+
+    return # FastAPI handles 204 No Content response automatically
+
+
+# --- Document/File Endpoints (Now dataset-specific) ---
+
+@app.post("/documents/upload/", response_model=DataSourceMeta, deprecated=True, summary="Deprecated: Use upload to dataset instead")
+async def upload_document_deprecated(
     current_user: User = Depends(auth.get_current_active_user),
     file: UploadFile = File(...),
     embedding_strategy: Optional[str] = Form(None),
     chunking_strategy: Optional[str] = Form(None),
-    chunking_params_json: Optional[str] = Form(None) # JSON文字列としてチャンキングパラメータを受け取る
+    chunking_params_json: Optional[str] = Form(None)
 ):
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="This endpoint is deprecated. Please use /users/me/datasets/{dataset_id}/documents/upload/."
+    )
+
+
+@app.post("/users/me/datasets/{dataset_id}/documents/upload/", response_model=DataSourceMeta)
+async def upload_document_to_dataset(
+    dataset_id: uuid.UUID,
+    current_user: User = Depends(auth.get_current_active_user),
+    file: UploadFile = File(...),
+    embedding_strategy: Optional[str] = Form(None),
+    chunking_strategy: Optional[str] = Form(None),
+    chunking_params_json: Optional[str] = Form(None)
+):
+    user_id_str = str(current_user.user_id)
+    dataset_id_str = str(dataset_id)
+
+    # Verify dataset exists and belongs to user
+    all_datasets_meta = _read_datasets_meta()
+    user_owned_datasets = all_datasets_meta.get(user_id_str, [])
+    if not any(ds.dataset_id == dataset_id for ds in user_owned_datasets):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found or access denied.")
+
     original_filename = file.filename if file.filename else "unknown_file"
     file_extension = Path(original_filename).suffix.lstrip('.').lower()
 
-    if file_extension not in SUPPORTED_FILE_TYPES.__args__:
+    if file_extension not in SUPPORTED_FILE_TYPES.__args__: # type: ignore
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unsupported file type: '{file_extension}'. Supported types are: {', '.join(SUPPORTED_FILE_TYPES.__args__)}"
+            detail=f"Unsupported file type: '{file_extension}'. Supported types are: {', '.join(SUPPORTED_FILE_TYPES.__args__)}" # type: ignore
         )
 
-    data_source_id = f"{original_filename}_{uuid.uuid4().hex[:8]}"
+    data_source_id = f"{original_filename}_{uuid.uuid4().hex[:8]}" # Unique ID for this file
     temp_file_path = TMP_UPLOAD_DIR / f"{uuid.uuid4().hex}_{original_filename}"
 
-    # 戦略パラメータの処理
     emb_strategy_name = embedding_strategy or embedding_manager.default_strategy_name
     if not emb_strategy_name:
-        # EmbeddingManagerが利用可能な戦略をロードできなかった、またはデフォルトが設定できなかった場合
-        # （通常は EmbeddingManager の初期化時に警告ログが出ているはず）
+        # No need to unlink temp_file_path here as it's not created yet
         raise HTTPException(status_code=503, detail="Service Unavailable: Embedding strategies not properly configured.")
 
     chk_strategy_name = chunking_strategy or chunking_manager.default_strategy_name
     if not chk_strategy_name:
-        # ChunkingManagerが利用可能な戦略をロードできなかった、またはデフォルトが設定できなかった場合
+        # No need to unlink temp_file_path here
         raise HTTPException(status_code=503, detail="Service Unavailable: Chunking strategies not properly configured.")
 
     chk_params: Optional[Dict[str, Any]] = None
@@ -149,91 +352,171 @@ async def upload_document(
         try:
             chk_params = json.loads(chunking_params_json)
         except json.JSONDecodeError:
+            # No need to unlink temp_file_path here
             raise HTTPException(status_code=400, detail="Invalid JSON format for chunking_params_json.")
 
-    # 戦略のバリデーション
     if emb_strategy_name not in embedding_manager.get_available_strategies():
+        # No need to unlink temp_file_path here
         raise HTTPException(status_code=400, detail=f"Invalid embedding strategy: {emb_strategy_name}")
-    # ChunkingManager.get_strategyは存在しない戦略名の場合デフォルトにフォールバックするので、
-    # ここでの厳密な存在チェックは必須ではないが、特定の戦略名を期待する場合は追加しても良い。
 
     try:
         with open(temp_file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
-        # Document Loaderを使って一時ファイルからDocumentオブジェクトを作成
-        # (load_and_split_document はVectorStoreManager内部で呼ばれるように変更する想定)
-        # ここでは、まずファイルの内容を読み込み、Documentオブジェクトを作成する
-        # これはVectorStoreManagerの責務の一部になるべき
-        # TODO: この部分をVectorStoreManagerに統合する
-        docs_to_process = [Document(page_content=temp_file_path.read_text(encoding="utf-8"), metadata={"source": original_filename, "file_path": str(temp_file_path)})]
-        # PDFやMarkdownの場合は、適切なローダーを使う必要がある。
-        # load_and_split_documentを直接呼び出すか、VSMがそれを行う。
-        # ここでは簡略化のため、VSMが元のドキュメントリストを受け付けると仮定。
+        effective_chunk_params = chk_params or {}
+        # Use specific params if provided, else defaults that load_and_split_document might have
+        chunk_size_to_use = effective_chunk_params.get("chunk_size", 1000)
+        chunk_overlap_to_use = effective_chunk_params.get("chunk_overlap", 200)
 
-        num_chunks = vector_store_manager.add_documents(
-            user_id=str(current_user.user_id),
-            data_source_id=data_source_id,
-            documents=docs_to_process, # Langchain Documentのリスト
-            embedding_strategy_name=emb_strategy_name,
-            chunking_strategy_name=chk_strategy_name,
-            chunking_params=chk_params
+        # Use load_and_split_document from core.document_processor
+        split_docs_to_process = load_and_split_document(
+            file_path=str(temp_file_path),
+            file_type=file_extension, # type: ignore
+            chunk_size=chunk_size_to_use,
+            chunk_overlap=chunk_overlap_to_use
         )
 
-        if num_chunks == 0:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Document is empty or could not be processed into chunks.")
+        if not split_docs_to_process:
+             if temp_file_path.exists(): temp_file_path.unlink() # Clean up temp file
+             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Document is empty or could not be loaded/split into processable chunks.")
 
-        # 使用されたチャンキング戦略の具体的な設定を取得
-        # (get_strategyはインスタンスを返すので、そこからconfigを取得)
-        final_chunking_strategy = chunking_manager.get_strategy(chk_strategy_name, params=chk_params)
-        final_chunking_config = final_chunking_strategy.get_config()
+        # Pass the already chunked documents to the vector store manager
+        num_added_to_vsm = vector_store_manager.add_documents(
+            user_id=user_id_str,
+            data_source_id=data_source_id,
+            documents=split_docs_to_process, # List of Langchain Document chunks
+            embedding_strategy_name=emb_strategy_name,
+            # These chunking details are for metadata; actual chunking was done above by load_and_split_document.
+            chunking_strategy_name=chk_strategy_name,
+            chunking_params=effective_chunk_params, # Pass the actual params used for chunking for metadata
+            dataset_id=dataset_id_str # Pass dataset_id for VSM metadata/namespacing
+        )
 
+        if num_added_to_vsm == 0 and split_docs_to_process: # Should not happen if VSM worked correctly
+            if temp_file_path.exists(): temp_file_path.unlink() # Clean up temp file
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to add document chunks to vector store after processing.")
 
-        metas = _read_datasources_meta()
-        user_metas = metas.get(str(current_user.user_id), [])
+        # Get the actual configuration of the chunking strategy used for metadata recording
+        final_chunking_strategy_instance = chunking_manager.get_strategy(chk_strategy_name, params=effective_chunk_params)
+        final_chunking_config_recorded = final_chunking_strategy_instance.get_config()
+
+        # Update datasources_meta.json
+        datasources_meta_storage = _read_datasources_meta()
+        user_specific_datasources = datasources_meta_storage.get(user_id_str, {})
+        dataset_specific_files = user_specific_datasources.get(dataset_id_str, [])
+
         new_meta = DataSourceMeta(
             data_source_id=data_source_id,
+            dataset_id=dataset_id, # Store the UUID object from path parameter
             original_filename=original_filename,
             status="processed",
             uploaded_at=datetime.now(timezone.utc).isoformat(),
-            chunk_count=num_chunks,
+            chunk_count=len(split_docs_to_process), # Number of chunks created by load_and_split_document
             embedding_strategy_used=emb_strategy_name,
-            chunking_strategy_used=final_chunking_strategy.get_name(), # パラメータ反映後の名前
-            chunking_config_used=final_chunking_config
+            chunking_strategy_used=final_chunking_strategy_instance.get_name(), # Name of the strategy
+            chunking_config_used=final_chunking_config_recorded # Actual config used
         )
-        user_metas.append(new_meta)
-        metas[str(current_user.user_id)] = user_metas
-        _write_datasources_meta(metas)
+        dataset_specific_files.append(new_meta)
+        user_specific_datasources[dataset_id_str] = dataset_specific_files
+        datasources_meta_storage[user_id_str] = user_specific_datasources
+        _write_datasources_meta(datasources_meta_storage)
 
         return new_meta
     except HTTPException:
+        # Ensure temp file is cleaned up if it exists, even on known HTTPExceptions from this block
+        if temp_file_path.exists(): temp_file_path.unlink()
         raise
     except Exception as e:
-        # logger.error(f"Error during document upload: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error processing file: {str(e)}")
+        # Ensure temp file is cleaned up on any other unexpected exception
+        if temp_file_path.exists(): temp_file_path.unlink()
+        # logger.error(f"Error during document upload to dataset {dataset_id_str} for user {user_id_str}: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"An unexpected error occurred processing file: {str(e)}")
     finally:
+        # Final cleanup check, though individual error paths should also clean up.
         if temp_file_path.exists():
             temp_file_path.unlink()
-        if hasattr(file, 'close') and file.file:
-            file.file.close()
+        # Ensure the uploaded file stream is closed by FastAPI/Starlette,
+        # but if direct manipulation, file.file.close() might be needed.
+        # Given UploadFile, FastAPI handles this.
 
-@app.get("/documents/", response_model=List[DataSourceMeta])
-async def list_documents(current_user: User = Depends(auth.get_current_active_user)):
-    metas = _read_datasources_meta()
-    user_specific_metas = metas.get(str(current_user.user_id), [])
-    return user_specific_metas
+@app.get("/users/me/datasets/{dataset_id}/documents/", response_model=List[DataSourceMeta])
+async def list_documents_in_dataset(
+    dataset_id: uuid.UUID,
+    current_user: User = Depends(auth.get_current_active_user)
+):
+    user_id_str = str(current_user.user_id)
+    dataset_id_str = str(dataset_id)
+
+    all_datasets_meta = _read_datasets_meta()
+    user_owned_datasets = all_datasets_meta.get(user_id_str, [])
+    if not any(ds.dataset_id == dataset_id for ds in user_owned_datasets):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found or access denied.")
+
+    datasources_meta = _read_datasources_meta()
+    user_specific_datasources = datasources_meta.get(user_id_str, {})
+    dataset_specific_files = user_specific_datasources.get(dataset_id_str, [])
+    return dataset_specific_files
+
+@app.delete("/users/me/datasets/{dataset_id}/documents/{data_source_id}/", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_document_from_dataset(
+    dataset_id: uuid.UUID,
+    data_source_id: str,
+    current_user: User = Depends(auth.get_current_active_user)
+):
+    user_id_str = str(current_user.user_id)
+    dataset_id_str = str(dataset_id)
+
+    all_datasets_meta = _read_datasets_meta()
+    user_owned_datasets = all_datasets_meta.get(user_id_str, [])
+    if not any(ds.dataset_id == dataset_id for ds in user_owned_datasets):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found or access denied.")
+
+    datasources_meta_storage = _read_datasources_meta()
+    user_datasources = datasources_meta_storage.get(user_id_str, {})
+    if dataset_id_str not in user_datasources:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset (in file metadata) not found.")
+
+    files_in_dataset = user_datasources[dataset_id_str]
+    file_to_delete_idx = -1
+    for i, file_meta in enumerate(files_in_dataset):
+        if file_meta.data_source_id == data_source_id:
+            file_to_delete_idx = i
+            break
+
+    if file_to_delete_idx == -1:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found in the specified dataset.")
+
+    files_in_dataset.pop(file_to_delete_idx)
+    if not files_in_dataset:
+        user_datasources.pop(dataset_id_str)
+        if not user_datasources:
+             datasources_meta_storage.pop(user_id_str, None)
+    _write_datasources_meta(datasources_meta_storage)
+
+    try:
+        vector_store_manager.delete_documents(
+            user_id=user_id_str,
+            data_source_id=data_source_id,
+            dataset_id=dataset_id_str
+        )
+    except Exception as e:
+        print(f"Error deleting file {data_source_id} (dataset {dataset_id_str}) from vector store: {e}")
+        pass
+    return
+
+@app.get("/documents/", response_model=List[DataSourceMeta], deprecated=True, summary="Deprecated: Use GET /users/me/datasets/{dataset_id}/documents/ instead.")
+async def list_documents_deprecated(current_user: User = Depends(auth.get_current_active_user)):
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="This endpoint is deprecated. Please use /users/me/datasets/{dataset_id}/documents/ to list files within a specific dataset."
+    )
 
 @app.post("/chat/query/", response_model=ChatQueryResponse)
 async def query_rag_chat(
     query_request: ChatQueryRequest,
     current_user: User = Depends(auth.get_current_active_user)
 ):
-    """
-    Handles a chat query, retrieves context from user-specific documents,
-    and generates a response using the RAG chain with a specified strategy.
-    """
     user_id_str = str(current_user.user_id)
-
     selected_rag_strategy = query_request.rag_strategy
     if selected_rag_strategy not in AVAILABLE_RAG_STRATEGIES:
         raise HTTPException(
@@ -241,47 +524,76 @@ async def query_rag_chat(
             detail=f"Invalid RAG strategy: '{selected_rag_strategy}'. Available strategies are: {', '.join(AVAILABLE_RAG_STRATEGIES)}"
         )
 
-    # ドキュメントのメタデータを読み込み、使用されたエンベディング戦略を取得する
-    # ここでは簡単のため、指定された最初のデータソースIDの戦略を使用する
-    # 複数のデータソースが異なる戦略で処理されている場合、より高度な処理が必要
-    embedding_strategy_for_retrieval = embedding_manager.get_available_strategies()[0] # デフォルトフォールバック
-    if query_request.data_source_ids:
-        all_metas = _read_datasources_meta()
-        user_metas = all_metas.get(user_id_str, [])
-        # 指定された最初のデータソースIDに対応するメタデータを探す
-        first_ds_id = query_request.data_source_ids[0]
-        meta_found = next((meta for meta in user_metas if meta.data_source_id == first_ds_id), None)
-        if meta_found and meta_found.embedding_strategy_used:
-            embedding_strategy_for_retrieval = meta_found.embedding_strategy_used
-        elif meta_found:
-            # embedding_strategy_used が記録されていない古いデータソースかもしれないので警告
-            pass # logger.warning(f"DataSource {first_ds_id} has no embedding_strategy_used metadata. Using default.")
-        else:
-            # logger.warning(f"DataSource {first_ds_id} metadata not found. Using default embedding strategy for retrieval.")
-            pass
+    embedding_strategy_for_retrieval = embedding_manager.get_available_strategies()[0]
+    target_data_source_ids_for_query: List[str] = []
 
+    all_user_files_by_dataset = _read_datasources_meta().get(user_id_str, {})
+
+    if query_request.data_source_ids:
+        target_data_source_ids_for_query.extend(query_request.data_source_ids)
+        # Determine embedding strategy from the first specified data_source_id
+        if target_data_source_ids_for_query:
+            first_file_id_to_check = target_data_source_ids_for_query[0]
+            meta_found = None
+            for dataset_files in all_user_files_by_dataset.values():
+                meta_found = next((meta for meta in dataset_files if meta.data_source_id == first_file_id_to_check), None)
+                if meta_found: break
+            if meta_found and meta_found.embedding_strategy_used:
+                embedding_strategy_for_retrieval = meta_found.embedding_strategy_used
+            elif not meta_found:
+                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Specified data_source_id {first_file_id_to_check} not found.")
+
+    elif query_request.dataset_ids:
+        first_strategy_set = False
+        for dataset_uuid in query_request.dataset_ids:
+            dataset_str_id = str(dataset_uuid)
+            # Ensure the queried dataset belongs to the user
+            user_actual_datasets = _read_datasets_meta().get(user_id_str, []) # Read dataset definitions
+            if not any(ds.dataset_id == dataset_uuid for ds in user_actual_datasets):
+                # Allow if dataset_id is not in user's datasets_meta, but files exist under it in datasources_meta
+                # This might indicate an orphaned dataset in datasources_meta, but we can still query if files are there.
+                # For stricter check, enable the following:
+                # raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"Access to dataset {dataset_str_id} is forbidden or dataset not found.")
+                pass
+
+
+            files_in_dataset = all_user_files_by_dataset.get(dataset_str_id, [])
+            for file_meta in files_in_dataset:
+                target_data_source_ids_for_query.append(file_meta.data_source_id)
+                if not first_strategy_set and file_meta.embedding_strategy_used:
+                    embedding_strategy_for_retrieval = file_meta.embedding_strategy_used
+                    first_strategy_set = True
+    else:
+        # Default: Query all documents from all datasets of the user
+        first_strategy_set = False
+        for dataset_files in all_user_files_by_dataset.values():
+            for file_meta in dataset_files:
+                target_data_source_ids_for_query.append(file_meta.data_source_id)
+                if not first_strategy_set and file_meta.embedding_strategy_used:
+                    embedding_strategy_for_retrieval = file_meta.embedding_strategy_used
+                    first_strategy_set = True
+
+    if not target_data_source_ids_for_query:
+         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No documents found for the query based on the provided criteria.")
 
     try:
-        answer = get_rag_response(
+        answer_data = get_rag_response(
             user_id=user_id_str,
             question=query_request.question,
-            data_source_ids=query_request.data_source_ids,
+            data_source_ids=list(set(target_data_source_ids_for_query)), # Ensure unique IDs
             rag_strategy=selected_rag_strategy, # type: ignore
-            # retriever_manager と embedding_strategy_for_retrieval は get_rag_response 内部で利用される想定
-            # 必要であれば、get_rag_response のシグネチャを変更して渡す
             embedding_strategy_for_retrieval=embedding_strategy_for_retrieval
         )
 
-        # Convert Document objects in sources to dicts for Pydantic model
         processed_sources = None
-        if answer.get("sources"):
+        if answer_data.get("sources"):
             processed_sources = [
                 {"page_content": doc.page_content, "metadata": doc.metadata}
-                for doc in answer["sources"]
+                for doc in answer_data["sources"]
             ]
 
         return ChatQueryResponse(
-            answer=answer["answer"],
+            answer=answer_data["answer"],
             strategy_used=selected_rag_strategy,
             sources=processed_sources
         )
@@ -291,7 +603,6 @@ async def query_rag_chat(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An error occurred processing your query with strategy '{selected_rag_strategy}': {str(e)}"
         )
-
 
 # To run this app (for testing locally):
 # Ensure you are in the project root directory (/app)

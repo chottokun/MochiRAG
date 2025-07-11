@@ -8,6 +8,28 @@ This document tracks the status of bug fixes and improvements for the MochiRAG p
 
 ## In Progress
 
+- **Feature: Multiple Dataset Management per User**
+    - Started: YYYY-MM-DD (To be updated with actual start date)
+    - Goal: Allow users to organize their uploaded documents into multiple datasets. Each dataset can have its own files. Users can create, delete datasets, and add/delete files within datasets.
+    - Plan Overview:
+        - Backend: Define `Dataset` model, update `DataSourceMeta`, modify metadata storage, create new API endpoints for dataset and file management.
+        - Core: Adjust `VectorStoreManager` and `RAGChain` to handle dataset-specific operations and queries.
+        - Frontend: Update UI for dataset creation, listing, file management within datasets, and selecting datasets for chat.
+        - Tests: Add comprehensive tests for new backend APIs and logic.
+        - Documentation: Update relevant documents.
+    - Status:
+        - Step 1 (`status.md` update): Completed.
+        - Step 2 (Backend - Models & Metadata): Completed. Defined `Dataset` model, updated `DataSourceMeta`, modified metadata JSON structure and helper functions.
+        - Step 3 (Backend - APIs): Completed. Added CRUD endpoints for datasets, file management endpoints per dataset, and updated chat endpoint for dataset targeting.
+        - Step 4 (Core module changes): Completed. Updated `VectorStoreManager` (add/query) and `RetrieverManager/RAGChain` to handle `dataset_id`.
+        - Step 5 (Frontend changes): Completed. Updated Document Management page for dataset operations and chat page for dataset selection.
+        - Step 6 (Tests): Completed. Added backend API tests for dataset and file management, and chat endpoint with dataset selection.
+        - Step 7 (Documentation): Completed. Updated `README.md`.
+    - Status: Completed. Pending final review and submission.
+    - Next Steps:
+        - Perform final review of changes.
+        - Submit the implemented feature.
+
 - **Feature: Display RAG references with option**
     - Started: YYYY-MM-DD (This will be replaced with the actual date)
     - Goal: Allow users to see the sources RAG referred to, with an option to toggle this display.
