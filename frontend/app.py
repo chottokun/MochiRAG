@@ -179,6 +179,14 @@ else:
         )
         st.sidebar.caption(f"Current strategy: **{selected_strategy}**")
 
+        # Option to show/hide references
+        if "show_references" not in st.session_state:
+            st.session_state.show_references = False # Default to not showing references
+        st.session_state.show_references = st.sidebar.checkbox(
+            "Show references/sources",
+            value=st.session_state.show_references,
+            key="show_references_checkbox"
+        )
 
         # --- Chat Session State ---
         if "chat_history" not in st.session_state:
@@ -196,6 +204,32 @@ else:
                     ai_response_text += f" (<i>{msg['strategy_used']}</i>)"
                 ai_response_text += f":</span> {msg['content']}"
                 st.markdown(ai_response_text, unsafe_allow_html=True)
+
+                # Display sources if available and checkbox is checked
+                if st.session_state.show_references and msg.get("sources"):
+                    with st.expander("View Sources", expanded=False): # Collapsible section for sources
+                        for i, src in enumerate(msg["sources"]):
+                            source_display_text = f"**Source {i+1}:**"
+                            metadata = src.get("metadata", {})
+                            original_filename = metadata.get("original_filename")
+                            data_source_id = metadata.get("data_source_id")
+                            page_num = metadata.get("page")
+
+                            if original_filename:
+                                source_display_text += f" `{original_filename}`"
+                            elif data_source_id: # Fallback to data_source_id if no filename
+                                source_display_text += f" ID: `{data_source_id}`"
+
+                            if page_num is not None:
+                                source_display_text += f" (Page: {page_num + 1})" # Assuming page is 0-indexed
+
+                            st.markdown(source_display_text, unsafe_allow_html=True)
+
+                            # Optionally display a snippet of page_content
+                            page_content_snippet = src.get("page_content", "")[:150] # Show first 150 chars
+                            if page_content_snippet:
+                                st.caption(f"> {page_content_snippet}...")
+                        st.markdown("---")
 
 
         # --- Chat Input ---
@@ -223,10 +257,12 @@ else:
                     response_data = resp.json()
                     answer = response_data.get("answer", "(No answer received)")
                     strategy_used = response_data.get("strategy_used", selected_strategy) # Use backend confirmed strategy
+                    sources_data = response_data.get("sources", None) # Get sources from response
                     st.session_state.chat_history.append({
                         "role": "assistant",
                         "content": answer,
-                        "strategy_used": strategy_used
+                        "strategy_used": strategy_used,
+                        "sources": sources_data # Store sources in chat history
                     })
                 else:
                     error_detail = resp.text

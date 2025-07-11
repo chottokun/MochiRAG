@@ -3,6 +3,7 @@ from typing import List, Optional, Dict, Any, Literal
 from abc import ABC, abstractmethod # ABCとabstractmethodをインポート
 
 from langchain_core.retrievers import BaseRetriever
+from langchain_core.documents import Document # Document をインポート
 # from langchain_core.embeddings import Embeddings # RetrieverManagerでは直接使わない想定
 from langchain_ollama import ChatOllama # 具体的なLLM型として
 from langchain_core.language_models import BaseLanguageModel # より汎用的なLLM型として

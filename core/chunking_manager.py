@@ -76,14 +76,14 @@ class SemanticChunkingStrategy(ChunkingStrategy):
     def __init__(self, embedding_model_instance: Embeddings, breakpoint_threshold_type: str = "percentile", **kwargs: Any):
         self.embedding_model_instance = embedding_model_instance
         self.breakpoint_threshold_type = breakpoint_threshold_type
-        self.kwargs = kwargs # その他のSemanticChunkerのパラメータ
+        self.additional_params = kwargs # 名前を変更して保持 (または self.kwargs のまま)
         try:
             self._splitter = SemanticChunker(
                 embeddings=self.embedding_model_instance,
-                breakpoint_threshold_type=self.breakpoint_threshold_type,
-                **self.kwargs
+                breakpoint_threshold_type=self.breakpoint_threshold_type
+                # **self.additional_params をここでは渡さない
             )
-            logger.info(f"SemanticChunkingStrategy initialized with threshold type: {self.breakpoint_threshold_type}")
+            logger.info(f"SemanticChunkingStrategy initialized with threshold type: {self.breakpoint_threshold_type}, additional_params: {self.additional_params}")
         except Exception as e:
             logger.error(f"Failed to initialize SemanticChunker: {e}", exc_info=True)
             raise ValueError(f"Failed to initialize SemanticChunker: {e}") from e

@@ -110,9 +110,10 @@ def get_rag_response(
     data_source_ids: Optional[List[str]] = None,
     rag_strategy: RAG_STRATEGY_TYPE = "basic",
     embedding_strategy_for_retrieval: Optional[str] = None # 追加
-) -> str:
+) -> Dict[str, Any]:
     """
     Retrieves relevant documents using the specified RAG strategy and generates a response.
+    Returns a dictionary containing the answer and the list of retrieved source documents.
     Utilizes the RetrieverManager to get the appropriate retriever.
     """
     logger.info(f"Getting RAG response for user '{user_id}', rag_strategy: '{rag_strategy}', embedding_for_retrieval: '{embedding_strategy_for_retrieval}', question: '{question[:50]}...'")
@@ -134,30 +135,50 @@ def get_rag_response(
         )
     except Exception as e:
         logger.error(f"Failed to get retriever for strategy '{rag_strategy}': {e}", exc_info=True)
-        return f"I'm sorry, but I encountered an error setting up the retrieval mechanism for strategy '{rag_strategy}'."
+        return {
+            "answer": f"I'm sorry, but I encountered an error setting up the retrieval mechanism for strategy '{rag_strategy}'.",
+            "sources": []
+        }
 
     # 2. Define the RAG chain using LCEL
     #    The retriever is now obtained from RetrieverManager
-    rag_chain = (
-        RunnableParallel(
-            context=(RunnableLambda(lambda x: x["question"]) | retriever | format_docs_with_sources),
-            question=RunnablePassthrough() # Pass the original question through
+
+    # Define a sub-chain to retrieve and format documents
+    # This will output a dictionary with 'retrieved_docs' and 'formatted_context'
+    retrieve_and_format_chain = RunnableParallel(
+        retrieved_docs=RunnableLambda(lambda x: x["question"]) | retriever,
+        question_passthrough=RunnablePassthrough() # Pass the original question through for the next step
+    ).assign(
+        formatted_context=lambda x: format_docs_with_sources(x["retrieved_docs"])
+    )
+
+    # Main RAG chain
+    rag_chain_with_sources = (
+        retrieve_and_format_chain
+        | RunnableParallel(
+            answer=(
+                RunnableLambda(lambda x: {"context": x["formatted_context"], "question": x["question_passthrough"]["question"]})
+                | default_rag_prompt
+                | llm_manager.get_llm()
+                | StrOutputParser()
+            ),
+            sources=RunnableLambda(lambda x: x["retrieved_docs"]) # Pass retrieved_docs to the output
         )
-        | RunnableLambda(lambda x: {"context": x["context"], "question": x["question"]["question"]}) # Ensure correct dict keys for prompt
-        | default_rag_prompt
-        | llm_manager.get_llm() # llm_managerから直接取得
-        | StrOutputParser()
     )
 
     # 3. Invoke the chain
     try:
         # The input to the chain should be a dictionary containing the question
-        response_text = rag_chain.invoke({"question": question})
-        logger.info(f"Generated RAG response: {response_text[:100]}...")
-        return response_text
+        result = rag_chain_with_sources.invoke({"question": question})
+        logger.info(f"Generated RAG response: {result['answer'][:100]}..., Sources count: {len(result['sources'])}")
+        return result # This will be a dict like {"answer": "...", "sources": [...docs...]}
     except Exception as e:
         logger.error(f"Error invoking RAG chain with strategy '{rag_strategy}': {e}", exc_info=True)
-        return f"I'm sorry, but I encountered an error while trying to generate a response using the '{rag_strategy}' strategy."
+        # Return a dict in case of error as well, to match the expected return type
+        return {
+            "answer": f"I'm sorry, but I encountered an error while trying to generate a response using the '{rag_strategy}' strategy.",
+            "sources": []
+        }
 
 # if __name__ == "__main__":
 #     # このブロックのテストは、各マネージャのユニットテストやE2Eテストでカバーされるため、

@@ -53,4 +53,4 @@ class ChatQueryRequest(BaseModel):
 class ChatQueryResponse(BaseModel):
     answer: str
     strategy_used: Optional[str] = None # To confirm which strategy was applied
-    # sources: Optional[List[Dict[str, Any]]] = None # Placeholder for future
+    sources: Optional[List[Dict[str, Any]]] = None # List of source documents, each a dict with "page_content" and "metadata"

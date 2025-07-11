@@ -271,7 +271,20 @@ async def query_rag_chat(
             # 必要であれば、get_rag_response のシグネチャを変更して渡す
             embedding_strategy_for_retrieval=embedding_strategy_for_retrieval
         )
-        return ChatQueryResponse(answer=answer, strategy_used=selected_rag_strategy)
+
+        # Convert Document objects in sources to dicts for Pydantic model
+        processed_sources = None
+        if answer.get("sources"):
+            processed_sources = [
+                {"page_content": doc.page_content, "metadata": doc.metadata}
+                for doc in answer["sources"]
+            ]
+
+        return ChatQueryResponse(
+            answer=answer["answer"],
+            strategy_used=selected_rag_strategy,
+            sources=processed_sources
+        )
     except Exception as e:
         # logger.error(f"Error in /chat/query/ for user {user_id_str} with strategy {selected_rag_strategy}: {e}", exc_info=True)
         raise HTTPException(
