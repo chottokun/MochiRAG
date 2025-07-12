@@ -287,20 +287,49 @@ else:
             ul_chk_strat=st.selectbox("Chk Strat:",options=chk_strats,key="ul_chk")
             ul_cs=st.number_input("Chunk Size",value=1000,min_value=100,step=50,key="ul_cs_val")
             ul_co=st.number_input("Chunk Overlap",value=200,min_value=0,step=20,key="ul_co_val")
-            with st.form("ul_file_ds_form",clear_on_submit=True):
-                ul_f=st.file_uploader("Upload (TXT,MD,PDF)",type=["txt","md","pdf"],key="f_ul_ds")
+            with st.form("ul_file_ds_form", clear_on_submit=True):
+                uploaded_files = st.file_uploader(
+                    "Upload (TXT, MD, PDF)",
+                    type=["txt", "md", "pdf"],
+                    key="f_ul_ds",
+                    accept_multiple_files=True
+                )
                 if st.form_submit_button("Upload to Dataset"):
-                    if ul_f and st.session_state.selected_dataset_id:
-                        pl={"emb_strat":ul_emb_strat if ul_emb_strat!="default"else None,"chk_strat":ul_chk_strat if ul_chk_strat!="default"else None}
-                        if ul_chk_strat and"recursive"in ul_chk_strat.lower():pl["chk_params"]={"chunk_size":ul_cs,"chunk_overlap":ul_co}
-                        fd_pl={"embedding_strategy":pl["emb_strat"],"chunking_strategy":pl["chk_strat"]}
-                        if pl.get("chk_params"):fd_pl['chunking_params_json']=json.dumps(pl["chk_params"])
-                        f_pl={"file":(ul_f.name,ul_f,ul_f.type)};h_auth={"Authorization":f"Bearer {st.session_state.token}"}
+                    if uploaded_files and st.session_state.selected_dataset_id:
+                        pl = {
+                            "emb_strat": ul_emb_strat if ul_emb_strat != "default" else None,
+                            "chk_strat": ul_chk_strat if ul_chk_strat != "default" else None
+                        }
+                        if ul_chk_strat and "recursive" in ul_chk_strat.lower():
+                            pl["chk_params"] = {"chunk_size": ul_cs, "chunk_overlap": ul_co}
+
+                        fd_pl = {
+                            "embedding_strategy": (None, pl["emb_strat"]),
+                            "chunking_strategy": (None, pl["chk_strat"])
+                        }
+                        if pl.get("chk_params"):
+                            fd_pl['chunking_params_json'] = (None, json.dumps(pl["chk_params"]))
+
+                        files_to_upload = [("files", (f.name, f, f.type)) for f in uploaded_files]
+                        h_auth = {"Authorization": f"Bearer {st.session_state.token}"}
+
+                        st.info(f"Uploading {len(files_to_upload)} file(s)...")
                         try:
-                            rp=requests.post(f"{BACKEND_URL}/users/me/datasets/{st.session_state.selected_dataset_id}/documents/upload/",headers=h_auth,files=f_pl,data=fd_pl,timeout=120)
-                            if rp.status_code==200:st.success(f"Doc '{ul_f.name}' uploaded.");get_files()
-                            else:st.error(f"Upload fail:{rp.status_code}-{rp.text}")
-                        except Exception as e:st.error(f"Upload err:{e}")
+                            rp = requests.post(
+                                f"{BACKEND_URL}/users/me/datasets/{st.session_state.selected_dataset_id}/documents/upload/",
+                                headers=h_auth,
+                                files=files_to_upload,
+                                data=fd_pl,
+                                timeout=300
+                            )
+                            if rp.status_code == 200:
+                                uploaded_filenames = [f.name for f in uploaded_files]
+                                st.success(f"Successfully uploaded: {', '.join(uploaded_filenames)}")
+                                get_files()
+                            else:
+                                st.error(f"Upload failed: {rp.status_code} - {rp.text}")
+                        except Exception as e:
+                            st.error(f"An error occurred during upload: {e}")
                         st.rerun()
             st.markdown("---");st.markdown("#### Documents in Dataset")
             if st.button("Refresh Files",key="ref_files"):get_files();st.rerun()
