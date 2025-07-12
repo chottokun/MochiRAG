@@ -43,7 +43,12 @@ MochiRAG は、個人のドキュメントに基づいて AI と対話できる 
    - 自然言語クエリに基づく応答生成  
    - 戦略選択: `basic`, `parent_document`, `multi_query`, `contextual_compression`  
    - 回答の根拠となった参照元ドキュメントの情報をオプションで表示（ファイル名、ページ番号、内容の断片など）
-4. **データ分離・セキュリティ**  
+   - チャット時に特定のデータセットを検索対象として指定可能
+4. **データセット管理**
+   - ユーザーは複数のデータセットを作成し、ドキュメントを整理可能
+   - データセットの作成、一覧表示、削除
+   - 各データセットへのファイルのアップロード、ファイル一覧表示、ファイル削除
+5. **データ分離・セキュリティ**
    - ユーザー毎に ChromaDB を分離  
    - 認証ユーザーのみ自身のデータアクセス可能  
 
@@ -106,7 +111,7 @@ uvicorn backend.main:app --reload --port 8000
 
 ```bash
 # 仮想環境内で
-streamlit run frontend/app.py
+uv run streamlit run frontend/app.py
 ```
 
 ブラウザで `http://localhost:8501` を開いて操作してください。
@@ -176,12 +181,20 @@ MochiRAG/
 
 ## 9. API エンドポイント
 
-- `POST /users/`           : 新規ユーザー登録  
-- `POST /token`            : トークン取得 (ログイン)  
-- `GET  /users/me`         : 認証ユーザー情報取得  
-- `POST /documents/upload/`: ドキュメントアップロード  
-- `GET  /documents/`       : アップロード済みドキュメント一覧  
-- `POST /chat/query/`      : RAG チャットクエリ  
+- `POST /users/`                                                 : 新規ユーザー登録
+- `POST /token`                                                  : トークン取得 (ログイン)
+- `GET  /users/me`                                               : 認証ユーザー情報取得
+- `POST /users/me/datasets/`                                     : データセット作成
+- `GET  /users/me/datasets/`                                     : データセット一覧取得
+- `GET  /users/me/datasets/{dataset_id}/`                        : 特定データセット詳細取得
+- `DELETE /users/me/datasets/{dataset_id}/`                      : データセット削除
+- `POST /users/me/datasets/{dataset_id}/documents/upload/`       : データセットへのファイルアップロード
+- `GET  /users/me/datasets/{dataset_id}/documents/`              : データセット内ファイル一覧取得
+- `DELETE /users/me/datasets/{dataset_id}/documents/{data_source_id}/`: データセットからのファイル削除
+- `POST /chat/query/`                                            : RAG チャットクエリ (データセット指定可)
+
+- `POST /documents/upload/` (非推奨: `/users/me/datasets/{dataset_id}/documents/upload/` を使用してください)
+- `GET  /documents/`       (非推奨: `/users/me/datasets/{dataset_id}/documents/` を使用してください)
 
 詳細は FastAPI 自動生成ドキュメント (`/docs` または `/redoc`) を参照。
 

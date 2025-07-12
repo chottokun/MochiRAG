@@ -80,6 +80,7 @@ class RetrieverStrategyInterface(ABC): # 名前をより明確に
         # vector_store_manager_instance: VectorStoreManager, # VSMはグローバルインスタンスを使う想定に
         # llm_instance: Optional[BaseLanguageModel] = None, # LLMもLLMManagerから取得
         data_source_ids: Optional[List[str]] = None,
+        dataset_ids: Optional[List[str]] = None, # 追加
         n_results: int = 3,
         **kwargs: Any
     ) -> BaseRetriever:
@@ -95,7 +96,9 @@ class BasicRetrieverStrategy(RetrieverStrategyInterface):
 
     def get_retriever(
         self, user_id: str, embedding_strategy_name: str,
-        data_source_ids: Optional[List[str]] = None, n_results: int = 3, **kwargs: Any
+        data_source_ids: Optional[List[str]] = None,
+        dataset_ids: Optional[List[str]] = None, # 追加
+        n_results: int = 3, **kwargs: Any
     ) -> BaseRetriever:
         embedding_function = embedding_manager.get_embedding_model(embedding_strategy_name)
 
@@ -119,16 +122,27 @@ class BasicRetrieverStrategy(RetrieverStrategyInterface):
         if data_source_ids:
             if len(data_source_ids) == 1:
                 filter_conditions.append({"data_source_id": data_source_ids[0]})
-            else:
+            elif len(data_source_ids) > 1:
                 filter_conditions.append({"data_source_id": {"$in": data_source_ids}})
 
-        final_filter: Optional[Dict[str, Any]] = None
-        if filter_conditions:
-            final_filter = {"$and": filter_conditions} if len(filter_conditions) > 1 else filter_conditions[0]
+        if dataset_ids:
+            if len(dataset_ids) == 1:
+                filter_conditions.append({"dataset_id": dataset_ids[0]})
+            elif len(dataset_ids) > 1:
+                filter_conditions.append({"dataset_id": {"$in": dataset_ids}})
 
-        return vectorstore.as_retriever(
-            search_kwargs={"k": n_results, "filter": final_filter} if final_filter else {"k": n_results}
-        )
+        final_filter: Optional[Dict[str, Any]] = None
+        if filter_conditions: # filter_conditionsが空でない場合のみフィルタを設定
+            if len(filter_conditions) > 1:
+                final_filter = {"$and": filter_conditions}
+            elif len(filter_conditions) == 1: # 条件が1つだけの場合
+                final_filter = filter_conditions[0]
+
+        search_kwargs = {"k": n_results}
+        if final_filter:
+            search_kwargs["filter"] = final_filter
+
+        return vectorstore.as_retriever(search_kwargs=search_kwargs)
 
 class MultiQueryRetrieverStrategy(RetrieverStrategyInterface):
     def get_name(self) -> str:
@@ -136,7 +150,9 @@ class MultiQueryRetrieverStrategy(RetrieverStrategyInterface):
 
     def get_retriever(
         self, user_id: str, embedding_strategy_name: str,
-        data_source_ids: Optional[List[str]] = None, n_results: int = 3, **kwargs: Any
+        data_source_ids: Optional[List[str]] = None,
+        dataset_ids: Optional[List[str]] = None, # 追加
+        n_results: int = 3, **kwargs: Any
     ) -> BaseRetriever:
         llm_instance = llm_manager.get_llm() # デフォルトLLMを取得
         if not llm_instance:
@@ -145,7 +161,7 @@ class MultiQueryRetrieverStrategy(RetrieverStrategyInterface):
             raise ValueError("Query generation prompt not available for MultiQueryRetriever.")
 
         base_retriever = BasicRetrieverStrategy().get_retriever(
-            user_id, embedding_strategy_name, data_source_ids, n_results
+            user_id, embedding_strategy_name, data_source_ids, dataset_ids, n_results # dataset_ids を渡す
         )
         return MultiQueryRetriever.from_llm(
             retriever=base_retriever, llm=llm_instance, prompt=query_gen_prompt
@@ -157,14 +173,16 @@ class ContextualCompressionRetrieverStrategy(RetrieverStrategyInterface):
 
     def get_retriever(
         self, user_id: str, embedding_strategy_name: str,
-        data_source_ids: Optional[List[str]] = None, n_results: int = 5, **kwargs: Any
+        data_source_ids: Optional[List[str]] = None,
+        dataset_ids: Optional[List[str]] = None, # 追加
+        n_results: int = 5, **kwargs: Any
     ) -> BaseRetriever:
         llm_instance = llm_manager.get_llm()
         if not llm_instance:
             raise ValueError("LLM instance not available via LLMManager for ContextualCompressionRetriever.")
 
         base_retriever = BasicRetrieverStrategy().get_retriever(
-            user_id, embedding_strategy_name, data_source_ids, n_results
+            user_id, embedding_strategy_name, data_source_ids, dataset_ids, n_results # dataset_ids を渡す
         )
         compressor = LLMChainExtractor.from_llm(llm_instance)
         return ContextualCompressionRetriever(
@@ -177,7 +195,9 @@ class ParentDocumentRetrieverStrategy(RetrieverStrategyInterface):
 
     def get_retriever(
         self, user_id: str, embedding_strategy_name: str,
-        data_source_ids: Optional[List[str]] = None, n_results: int = 3, **kwargs: Any
+        data_source_ids: Optional[List[str]] = None,
+        dataset_ids: Optional[List[str]] = None, # 追加
+        n_results: int = 3, **kwargs: Any
     ) -> BaseRetriever:
         # ParentDocumentRetrieverは child_splitter と vectorstore, docstore が必要
         # child_splitter は document_processor から default_text_splitter を使う想定
@@ -186,7 +206,7 @@ class ParentDocumentRetrieverStrategy(RetrieverStrategyInterface):
         logger.info("Attempting to initialize ParentDocumentRetriever.")
         if not default_text_splitter:
              logger.warning("Default text_splitter not available for ParentDocumentRetriever. Falling back to basic.")
-             return BasicRetrieverStrategy().get_retriever(user_id, embedding_strategy_name, data_source_ids, n_results)
+             return BasicRetrieverStrategy().get_retriever(user_id, embedding_strategy_name, data_source_ids, dataset_ids, n_results) # dataset_ids
 
         embedding_function = embedding_manager.get_embedding_model(embedding_strategy_name)
         try:
@@ -260,7 +280,9 @@ class DeepRagRetrieverStrategy(RetrieverStrategyInterface):
 
     def get_retriever(
         self, user_id: str, embedding_strategy_name: str,
-        data_source_ids: Optional[List[str]] = None, n_results: int = 3, # サブクエリごとの検索結果数
+        data_source_ids: Optional[List[str]] = None,
+        dataset_ids: Optional[List[str]] = None, # 追加
+        n_results: int = 3, # サブクエリごとの検索結果数
         max_sub_queries: int = 3, # 生成するサブクエリの最大数（プロンプトと合わせる）
         **kwargs: Any
     ) -> BaseRetriever:
@@ -277,6 +299,7 @@ class DeepRagRetrieverStrategy(RetrieverStrategyInterface):
             user_id: str
             embedding_strategy_name: str
             data_source_ids: Optional[List[str]]
+            dataset_ids: Optional[List[str]] # 追加
             n_results_per_subquery: int
             max_sub_queries: int
             llm_for_decomposition: BaseLanguageModel
@@ -300,6 +323,7 @@ class DeepRagRetrieverStrategy(RetrieverStrategyInterface):
                             user_id=self.user_id,
                             embedding_strategy_name=self.embedding_strategy_name,
                             data_source_ids=self.data_source_ids,
+                            dataset_ids=self.dataset_ids, # dataset_ids を渡す
                             n_results=self.n_results_per_subquery
                         )
                         docs = retriever_for_subquery.invoke(sub_query)
@@ -347,10 +371,10 @@ class DeepRagRetrieverStrategy(RetrieverStrategyInterface):
             user_id=user_id,
             embedding_strategy_name=embedding_strategy_name,
             data_source_ids=data_source_ids,
+            dataset_ids=dataset_ids, # 追加
             n_results_per_subquery=n_results,
             max_sub_queries=max_sub_queries,
-            llm_for_decomposition=llm_instance,
-            # base_retriever_strategy=BasicRetrieverStrategy() # サブ検索用
+            llm_for_decomposition=llm_instance
         )
         return custom_retriever
 
@@ -443,6 +467,7 @@ class RetrieverManager:
         embedding_strategy_name: str,   # 必須引数
         name: Optional[RAG_STRATEGY_TYPE] = None, # デフォルト値あり
         data_source_ids: Optional[List[str]] = None,
+        dataset_ids: Optional[List[str]] = None, # 追加
         n_results: Optional[int] = None,
         max_sub_queries: Optional[int] = None,
         n_results_per_subquery: Optional[int] = None,
@@ -502,6 +527,7 @@ class RetrieverManager:
             user_id=user_id,
             embedding_strategy_name=embedding_strategy_name,
             data_source_ids=data_source_ids,
+            dataset_ids=dataset_ids, # 追加
             n_results=final_n_results,
             **kwargs
         )
