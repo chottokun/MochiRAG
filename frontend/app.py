@@ -6,8 +6,8 @@ from typing import List, Dict, Any # Optional を削除
 # Attempt to import AVAILABLE_RAG_STRATEGIES for the dropdown
 try:
     from core.rag_chain import AVAILABLE_RAG_STRATEGIES
-    from core.embedding_manager import embedding_manager
-    from core.chunking_manager import chunking_manager
+    from core.embedding_manager import embedding_manager 
+    from core.chunking_manager import chunking_manager 
 except ImportError:
     import sys
     from pathlib import Path
@@ -21,23 +21,23 @@ except ImportError:
     except ImportError:
         AVAILABLE_RAG_STRATEGIES = ["basic"]
         st.warning("Could not load RAG, Embedding, or Chunking strategies from core modules. Defaulting to 'basic'. Ensure PYTHONPATH is set correctly.")
-        embedding_manager = None
+        embedding_manager = None 
         chunking_manager = None
 
 # --- Configuration ---
-BACKEND_URL = "http://localhost:8000"
+BACKEND_URL = "http://localhost:8000" 
 
 # --- Session State Initialization ---
 if "token" not in st.session_state:
     st.session_state.token = None
-if "user" not in st.session_state:
+if "user" not in st.session_state: 
     st.session_state.user = None
-if "page" not in st.session_state:
+if "page" not in st.session_state: 
     st.session_state.page = "login"
-if "main_app_page" not in st.session_state:
+if "main_app_page" not in st.session_state: 
     st.session_state.main_app_page = "Chat"
     if "datasets" not in st.session_state:
-        st.session_state.datasets = []
+        st.session_state.datasets = [] 
     if "selected_dataset_id" not in st.session_state:
         st.session_state.selected_dataset_id = None
     if "files_in_selected_dataset" not in st.session_state:
@@ -96,7 +96,7 @@ def logout():
     st.rerun()
 
 # --- Helper functions for API calls ---
-def get_user_datasets():
+def get_user_datasets(): 
     if "token" not in st.session_state or st.session_state.token is None:
         st.session_state.datasets = []
         return False
@@ -147,13 +147,13 @@ else:
     if st.session_state.main_app_page == "Chat":
         st.title("Chat Page")
         st.sidebar.subheader("RAG Strategy")
-        selected_strategy = st.sidebar.selectbox("Choose a RAG strategy:", options=AVAILABLE_RAG_STRATEGIES,
-                                                 index=AVAILABLE_RAG_STRATEGIES.index("basic") if "basic" in AVAILABLE_RAG_STRATEGIES else 0,
+        selected_strategy = st.sidebar.selectbox("Choose a RAG strategy:", options=AVAILABLE_RAG_STRATEGIES, 
+                                                 index=AVAILABLE_RAG_STRATEGIES.index("basic") if "basic" in AVAILABLE_RAG_STRATEGIES else 0, 
                                                  key="rag_strategy_selector")
         st.sidebar.caption(f"Current strategy: **{selected_strategy}**")
         if "show_references" not in st.session_state: st.session_state.show_references = False
         st.session_state.show_references = st.sidebar.checkbox("Show references/sources", value=st.session_state.show_references, key="show_references_checkbox")
-
+        
         st.sidebar.subheader("Target Datasets for Chat")
         if not st.session_state.datasets: get_user_datasets()
         dataset_options = {ds['name']: ds['dataset_id'] for ds in st.session_state.datasets}
@@ -193,7 +193,7 @@ else:
                             data = resp.json()
                             st.session_state.chat_history.append({"role": "assistant", "content": data.get("answer"), "strategy_used": data.get("strategy_used"), "sources": data.get("sources")})
                         else:
-                            detail = resp.text;
+                            detail = resp.text; 
                             try: detail = resp.json().get("detail", resp.text)
                             except: pass
                             st.session_state.chat_history.append({"role": "assistant", "content": f"(Error: {detail})", "strategy_used": selected_strategy})
@@ -213,7 +213,7 @@ else:
                 if response.status_code == 201: st.success(f"Dataset '{name}' created!"); get_user_datasets(); return True
                 else: st.error(f"Failed to create dataset: {response.status_code} - {response.text}"); return False
             except Exception as e: st.error(f"Error creating dataset: {e}"); return False
-
+        
         def delete_selected_dataset(dataset_id_to_delete: str):
             headers = {"Authorization": f"Bearer {st.session_state.token}"}
             try:
@@ -239,7 +239,7 @@ else:
                 col1.write(ds.get("name")); col2.write(ds.get("description")or"");
                 if col3.button("Files",key=f"mng_{ds['dataset_id']}"):st.session_state.selected_dataset_id=ds["dataset_id"];st.session_state.files_in_selected_dataset=[];st.rerun()
                 if col4.button("🗑️",key=f"del_ds_{ds['dataset_id']}"):
-                    st.session_state.deleting_dataset_id = ds['dataset_id']
+                    st.session_state.deleting_dataset_id = ds['dataset_id'] 
             if "deleting_dataset_id" in st.session_state and st.session_state.deleting_dataset_id:
                 ds_to_delete = next((d for d in st.session_state.datasets if d['dataset_id'] == st.session_state.deleting_dataset_id), None)
                 if ds_to_delete:
@@ -268,21 +268,21 @@ else:
                     else:st.error(f"Failed to delete file:{r.status_code}-{r.text}");return False
                 except Exception as e:st.error(f"Error deleting file:{e}");return False
             if not st.session_state.files_in_selected_dataset and st.session_state.selected_dataset_id:get_files()
-
+            
             st.markdown("#### Upload New Document")
             emb_strats=["default"]; chk_strats=["default"]
-
+            
             current_embedding_manager = globals().get('embedding_manager')
-            if current_embedding_manager is not None:
+            if current_embedding_manager is not None: 
                 try: emb_strats = current_embedding_manager.get_available_strategies()
-                except Exception as e: st.error(f"Failed to load emb strats: {e}")
+                except Exception as e: st.error(f"Failed to load emb strats: {e}") 
             else: st.warning("Embedding manager not available. Using default.")
             ul_emb_strat=st.selectbox("Emb Strat:",options=emb_strats,key="ul_emb")
-
+            
             current_chunking_manager = globals().get('chunking_manager')
-            if current_chunking_manager is not None:
+            if current_chunking_manager is not None: 
                 try: chk_strats = current_chunking_manager.get_available_strategies()
-                except Exception as e: st.error(f"Failed to load chk strats: {e}")
+                except Exception as e: st.error(f"Failed to load chk strats: {e}") 
             else: st.warning("Chunking manager not available. Using default.")
             ul_chk_strat=st.selectbox("Chk Strat:",options=chk_strats,key="ul_chk")
             ul_cs=st.number_input("Chunk Size",value=1000,min_value=100,step=50,key="ul_cs_val")
@@ -317,7 +317,7 @@ else:
                     if st.button("Cancel Del File",key=f"cancel_delf_{st.session_state.deleting_file_id}"):st.session_state.deleting_file_id=None;st.session_state.deleting_file_name=None;st.rerun()
             else:st.info("No docs in this dataset.")
         else:st.info("Select dataset to manage files.")
-    else:
+    else: 
         st.title("Welcome")
         st.write("Select a page from the sidebar.")
 

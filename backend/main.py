@@ -193,7 +193,7 @@ async def get_dataset(
     user_id_str = str(current_user.user_id)
     datasets_meta = _read_datasets_meta()
     user_datasets = datasets_meta.get(user_id_str, [])
-
+    
     dataset = next((ds for ds in user_datasets if ds.dataset_id == dataset_id), None)
     if not dataset:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found")
@@ -208,13 +208,13 @@ async def update_dataset(
     user_id_str = str(current_user.user_id)
     datasets_meta = _read_datasets_meta()
     user_datasets = datasets_meta.get(user_id_str, [])
-
+    
     dataset_idx = -1
     for i, ds in enumerate(user_datasets):
         if ds.dataset_id == dataset_id:
             dataset_idx = i
             break
-
+            
     if dataset_idx == -1:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found")
 
@@ -227,11 +227,11 @@ async def update_dataset(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Dataset with name '{dataset_update.name}' already exists."
             )
-
+    
     update_data = dataset_update.model_dump(exclude_unset=True)
     updated_dataset = existing_dataset.model_copy(update=update_data)
     updated_dataset.updated_at = datetime.utcnow()
-
+    
     user_datasets[dataset_idx] = updated_dataset
     datasets_meta[user_id_str] = user_datasets
     _write_datasets_meta(datasets_meta)
@@ -244,26 +244,26 @@ async def delete_dataset(
 ):
     user_id_str = str(current_user.user_id)
     dataset_id_str = str(dataset_id)
-
+    
     # Delete from datasets_meta.json
     datasets_meta = _read_datasets_meta()
     user_datasets = datasets_meta.get(user_id_str, [])
     dataset_to_delete = next((ds for ds in user_datasets if ds.dataset_id == dataset_id), None)
-
+    
     if not dataset_to_delete:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found")
-
+        
     user_datasets = [ds for ds in user_datasets if ds.dataset_id != dataset_id]
     if user_datasets:
         datasets_meta[user_id_str] = user_datasets
     else:
         datasets_meta.pop(user_id_str, None) # Remove user entry if no datasets left
     _write_datasets_meta(datasets_meta)
-
+    
     # Delete associated files from datasources_meta.json and vector store
     datasources_meta = _read_datasources_meta()
     user_datasources = datasources_meta.get(user_id_str, {})
-
+    
     if dataset_id_str in user_datasources:
         files_in_dataset = user_datasources.pop(dataset_id_str, [])
         if not user_datasources: # if no other datasets for this user
@@ -362,20 +362,20 @@ async def upload_document_to_dataset(
     try:
         with open(temp_file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-
+        
         effective_chunk_params = chk_params or {}
         # Use specific params if provided, else defaults that load_and_split_document might have
-        chunk_size_to_use = effective_chunk_params.get("chunk_size", 1000)
+        chunk_size_to_use = effective_chunk_params.get("chunk_size", 1000) 
         chunk_overlap_to_use = effective_chunk_params.get("chunk_overlap", 200)
 
         # Use load_and_split_document from core.document_processor
         split_docs_to_process = load_and_split_document(
             file_path=str(temp_file_path),
-            file_type=file_extension, # type: ignore
+            file_type=file_extension, # type: ignore 
             chunk_size=chunk_size_to_use,
             chunk_overlap=chunk_overlap_to_use
         )
-
+        
         if not split_docs_to_process:
              if temp_file_path.exists(): temp_file_path.unlink() # Clean up temp file
              raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Document is empty or could not be loaded/split into processable chunks.")
@@ -383,11 +383,11 @@ async def upload_document_to_dataset(
         # Pass the already chunked documents to the vector store manager
         num_added_to_vsm = vector_store_manager.add_documents(
             user_id=user_id_str,
-            data_source_id=data_source_id,
+            data_source_id=data_source_id, 
             documents=split_docs_to_process, # List of Langchain Document chunks
             embedding_strategy_name=emb_strategy_name,
             # These chunking details are for metadata; actual chunking was done above by load_and_split_document.
-            chunking_strategy_name=chk_strategy_name,
+            chunking_strategy_name=chk_strategy_name, 
             chunking_params=effective_chunk_params, # Pass the actual params used for chunking for metadata
             dataset_id=dataset_id_str # Pass dataset_id for VSM metadata/namespacing
         )
@@ -404,7 +404,7 @@ async def upload_document_to_dataset(
         datasources_meta_storage = _read_datasources_meta()
         user_specific_datasources = datasources_meta_storage.get(user_id_str, {})
         dataset_specific_files = user_specific_datasources.get(dataset_id_str, [])
-
+        
         new_meta = DataSourceMeta(
             data_source_id=data_source_id,
             dataset_id=dataset_id, # Store the UUID object from path parameter
@@ -460,7 +460,7 @@ async def list_documents_in_dataset(
 @app.delete("/users/me/datasets/{dataset_id}/documents/{data_source_id}/", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_document_from_dataset(
     dataset_id: uuid.UUID,
-    data_source_id: str,
+    data_source_id: str, 
     current_user: User = Depends(auth.get_current_active_user)
 ):
     user_id_str = str(current_user.user_id)
@@ -475,33 +475,33 @@ async def delete_document_from_dataset(
     user_datasources = datasources_meta_storage.get(user_id_str, {})
     if dataset_id_str not in user_datasources:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset (in file metadata) not found.")
-
+    
     files_in_dataset = user_datasources[dataset_id_str]
     file_to_delete_idx = -1
     for i, file_meta in enumerate(files_in_dataset):
         if file_meta.data_source_id == data_source_id:
             file_to_delete_idx = i
             break
-
+            
     if file_to_delete_idx == -1:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found in the specified dataset.")
 
     files_in_dataset.pop(file_to_delete_idx)
-    if not files_in_dataset:
+    if not files_in_dataset: 
         user_datasources.pop(dataset_id_str)
-        if not user_datasources:
+        if not user_datasources: 
              datasources_meta_storage.pop(user_id_str, None)
     _write_datasources_meta(datasources_meta_storage)
 
     try:
         vector_store_manager.delete_documents(
             user_id=user_id_str,
-            data_source_id=data_source_id,
-            dataset_id=dataset_id_str
+            data_source_id=data_source_id, 
+            dataset_id=dataset_id_str 
         )
     except Exception as e:
         print(f"Error deleting file {data_source_id} (dataset {dataset_id_str}) from vector store: {e}")
-        pass
+        pass 
     return
 
 @app.get("/documents/", response_model=List[DataSourceMeta], deprecated=True, summary="Deprecated: Use GET /users/me/datasets/{dataset_id}/documents/ instead.")
@@ -524,9 +524,9 @@ async def query_rag_chat(
             detail=f"Invalid RAG strategy: '{selected_rag_strategy}'. Available strategies are: {', '.join(AVAILABLE_RAG_STRATEGIES)}"
         )
 
-    embedding_strategy_for_retrieval = embedding_manager.get_available_strategies()[0]
+    embedding_strategy_for_retrieval = embedding_manager.get_available_strategies()[0] 
     target_data_source_ids_for_query: List[str] = []
-
+    
     all_user_files_by_dataset = _read_datasources_meta().get(user_id_str, {})
 
     if query_request.data_source_ids:
@@ -542,7 +542,7 @@ async def query_rag_chat(
                 embedding_strategy_for_retrieval = meta_found.embedding_strategy_used
             elif not meta_found:
                  raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Specified data_source_id {first_file_id_to_check} not found.")
-
+    
     elif query_request.dataset_ids:
         first_strategy_set = False
         for dataset_uuid in query_request.dataset_ids:
@@ -572,7 +572,7 @@ async def query_rag_chat(
                 if not first_strategy_set and file_meta.embedding_strategy_used:
                     embedding_strategy_for_retrieval = file_meta.embedding_strategy_used
                     first_strategy_set = True
-
+    
     if not target_data_source_ids_for_query:
          raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No documents found for the query based on the provided criteria.")
 

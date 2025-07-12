@@ -111,7 +111,7 @@ uvicorn backend.main:app --reload --port 8000
 
 ```bash
 # 仮想環境内で
-streamlit run frontend/app.py
+uv run streamlit run frontend/app.py
 ```
 
 ブラウザで `http://localhost:8501` を開いて操作してください。
