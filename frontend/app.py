@@ -1,13 +1,12 @@
 import streamlit as st
 import requests
 import json
-from typing import List, Dict, Any # Optional を削除
 
 # Attempt to import AVAILABLE_RAG_STRATEGIES for the dropdown
 try:
     from core.rag_chain import AVAILABLE_RAG_STRATEGIES
-    from core.embedding_manager import embedding_manager 
-    from core.chunking_manager import chunking_manager 
+    from core.embedding_manager import embedding_manager
+    from core.chunking_manager import chunking_manager
 except ImportError:
     import sys
     from pathlib import Path
@@ -20,28 +19,31 @@ except ImportError:
         from core.chunking_manager import chunking_manager
     except ImportError:
         AVAILABLE_RAG_STRATEGIES = ["basic"]
-        st.warning("Could not load RAG, Embedding, or Chunking strategies from core modules. Defaulting to 'basic'. Ensure PYTHONPATH is set correctly.")
-        embedding_manager = None 
+        st.warning(
+            "Could not load RAG, Embedding, or Chunking strategies from core modules. "
+            "Defaulting to 'basic'. Ensure PYTHONPATH is set correctly."
+        )
+        embedding_manager = None
         chunking_manager = None
 
 # --- Configuration ---
-BACKEND_URL = "http://localhost:8000" 
+BACKEND_URL = "http://localhost:8000"
 
 # --- Session State Initialization ---
 if "token" not in st.session_state:
     st.session_state.token = None
-if "user" not in st.session_state: 
+if "user" not in st.session_state:
     st.session_state.user = None
-if "page" not in st.session_state: 
+if "page" not in st.session_state:
     st.session_state.page = "login"
-if "main_app_page" not in st.session_state: 
+if "main_app_page" not in st.session_state:
     st.session_state.main_app_page = "Chat"
-    if "datasets" not in st.session_state:
-        st.session_state.datasets = [] 
-    if "selected_dataset_id" not in st.session_state:
-        st.session_state.selected_dataset_id = None
-    if "files_in_selected_dataset" not in st.session_state:
-        st.session_state.files_in_selected_dataset = []
+if "datasets" not in st.session_state:
+    st.session_state.datasets = []
+if "selected_dataset_id" not in st.session_state:
+    st.session_state.selected_dataset_id = None
+if "files_in_selected_dataset" not in st.session_state:
+    st.session_state.files_in_selected_dataset = []
 
 # --- Common API call helper with auth error handling ---
 def api_request(method, url, **kwargs):
@@ -90,8 +92,10 @@ def login(username, password):
     except requests.exceptions.ConnectionError:
         st.error("Connection Error: Could not connect to the backend.")
         return False
-    except json.JSONDecodeError: st.error("Received an invalid response from the server.")
-    except Exception as e: st.error(f"An unexpected error during login: {e}")
+    except json.JSONDecodeError:
+        st.error("Received an invalid response from the server.")
+    except Exception as e:
+        st.error(f"An unexpected error during login: {e}")
     return False
 
 def register(username, email, password):
@@ -108,8 +112,10 @@ def register(username, email, password):
             except json.JSONDecodeError: detail = response.text
             st.error(f"Registration failed: {detail}")
             return False
-    except requests.exceptions.ConnectionError: st.error("Connection Error: Could not connect to the backend.")
-    except Exception as e: st.error(f"An unexpected error during registration: {e}")
+    except requests.exceptions.ConnectionError:
+        st.error("Connection Error: Could not connect to the backend.")
+    except Exception as e:
+        st.error(f"An unexpected error during registration: {e}")
     return False
 
 def logout():
@@ -228,8 +234,11 @@ else:
                     try:
                         headers = {"Authorization": f"Bearer {st.session_state.token}"}
                         payload = {"question": user_input, "rag_strategy": selected_strategy}
+                        # データセット選択が空の場合は空リストを送信
                         if selected_dataset_ids_for_query:
                             payload["dataset_ids"] = selected_dataset_ids_for_query
+                        else:
+                            payload["dataset_ids"] = []
                         resp = api_request("POST", f"{BACKEND_URL}/chat/query/", json=payload, headers=headers, timeout=60)
                         if resp and resp.status_code == 200:
                             data = resp.json()

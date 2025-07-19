@@ -526,26 +526,24 @@ async def query_rag_chat(
             meta_found = None
             for dataset_files in all_user_files_by_dataset.values():
                 meta_found = next((meta for meta in dataset_files if meta.data_source_id == first_file_id_to_check), None)
-                if meta_found: break
+                if meta_found:
+                    break
             if meta_found and meta_found.embedding_strategy_used:
                 embedding_strategy_for_retrieval = meta_found.embedding_strategy_used
             elif not meta_found:
-                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Specified data_source_id {first_file_id_to_check} not found.")
-    
-    elif query_request.dataset_ids:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Specified data_source_id {first_file_id_to_check} not found.")
+
+    elif query_request.dataset_ids is not None:
+        # 空リストなら何も対象にしない（404）
+        if isinstance(query_request.dataset_ids, list) and len(query_request.dataset_ids) == 0:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No dataset selected for query.")
         first_strategy_set = False
         for dataset_uuid in query_request.dataset_ids:
             dataset_str_id = str(dataset_uuid)
             # Ensure the queried dataset belongs to the user
-            user_actual_datasets = _read_datasets_meta().get(user_id_str, []) # Read dataset definitions
+            user_actual_datasets = _read_datasets_meta().get(user_id_str, [])
             if not any(ds.dataset_id == dataset_uuid for ds in user_actual_datasets):
-                # Allow if dataset_id is not in user's datasets_meta, but files exist under it in datasources_meta
-                # This might indicate an orphaned dataset in datasources_meta, but we can still query if files are there.
-                # For stricter check, enable the following:
-                # raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"Access to dataset {dataset_str_id} is forbidden or dataset not found.")
                 pass
-
-
             files_in_dataset = all_user_files_by_dataset.get(dataset_str_id, [])
             for file_meta in files_in_dataset:
                 target_data_source_ids_for_query.append(file_meta.data_source_id)
