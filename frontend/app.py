@@ -166,23 +166,41 @@ else:
     if st.session_state.main_app_page == "Chat":
         st.title("Chat Page")
         st.sidebar.subheader("RAG Strategy")
-        selected_strategy = st.sidebar.selectbox("Choose a RAG strategy:", options=AVAILABLE_RAG_STRATEGIES, 
-                                                 index=AVAILABLE_RAG_STRATEGIES.index("basic") if "basic" in AVAILABLE_RAG_STRATEGIES else 0, 
-                                                 key="rag_strategy_selector")
+        selected_strategy = st.sidebar.selectbox(
+            "Choose a RAG strategy:",
+            options=AVAILABLE_RAG_STRATEGIES,
+            index=AVAILABLE_RAG_STRATEGIES.index("basic") if "basic" in AVAILABLE_RAG_STRATEGIES else 0,
+            key="rag_strategy_selector"
+        )
         st.sidebar.caption(f"Current strategy: **{selected_strategy}**")
-        if "show_references" not in st.session_state: st.session_state.show_references = False
-        st.session_state.show_references = st.sidebar.checkbox("Show references/sources", value=st.session_state.show_references, key="show_references_checkbox")
-        
+        if "show_references" not in st.session_state:
+            st.session_state.show_references = False
+        st.session_state.show_references = st.sidebar.checkbox(
+            "Show references/sources",
+            value=st.session_state.show_references,
+            key="show_references_checkbox"
+        )
+
         st.sidebar.subheader("Target Datasets for Chat")
-        if not st.session_state.datasets: get_user_datasets()
+        if not st.session_state.datasets:
+            get_user_datasets()
         dataset_options = {ds['name']: ds['dataset_id'] for ds in st.session_state.datasets}
-        selected_dataset_names = st.sidebar.multiselect("Select datasets to query (default: all):", options=list(dataset_options.keys()), key="chat_dataset_selector")
+        all_dataset_names = list(dataset_options.keys())
+        selected_dataset_names = st.sidebar.multiselect(
+            "Select datasets to query (default: all):",
+            options=all_dataset_names,
+            default=all_dataset_names,
+            key="chat_dataset_selector"
+        )
         selected_dataset_ids_for_query = [dataset_options[name] for name in selected_dataset_names if name in dataset_options]
 
-        if "chat_history" not in st.session_state: st.session_state.chat_history = []
-        if "chat_loading" not in st.session_state: st.session_state.chat_loading = False
+        if "chat_history" not in st.session_state:
+            st.session_state.chat_history = []
+        if "chat_loading" not in st.session_state:
+            st.session_state.chat_loading = False
         for msg in st.session_state.chat_history:
-            if msg["role"] == "user": st.markdown(f"**You:** {msg['content']}")
+            if msg["role"] == "user":
+                st.markdown(f"**You:** {msg['content']}")
             else:
                 ai_text = f"<span style='color: #2b7cff'><b>AI</b>{' (<i>'+msg.get('strategy_used','')+')</i>' if msg.get('strategy_used') else ''}:</span> {msg['content']}"
                 st.markdown(ai_text, unsafe_allow_html=True)
@@ -191,11 +209,15 @@ else:
                         for i, src in enumerate(msg["sources"]):
                             src_text = f"**Source {i+1}:**"
                             meta = src.get("metadata", {})
-                            if meta.get("original_filename"): src_text += f" `{meta['original_filename']}`"
-                            elif meta.get("data_source_id"): src_text += f" ID: `{meta['data_source_id']}`"
-                            if meta.get("page") is not None: src_text += f" (Page: {meta['page'] + 1})"
+                            if meta.get("original_filename"):
+                                src_text += f" `{meta['original_filename']}`"
+                            elif meta.get("data_source_id"):
+                                src_text += f" ID: `{meta['data_source_id']}`"
+                            if meta.get("page") is not None:
+                                src_text += f" (Page: {meta['page'] + 1})"
                             st.markdown(src_text, unsafe_allow_html=True)
-                            if src.get("page_content","")[:150]: st.caption(f"> {src['page_content'][:150]}...")
+                            if src.get("page_content", "")[:150]:
+                                st.caption(f"> {src['page_content'][:150]}...")
                         st.markdown("---")
         with st.form("chat_form", clear_on_submit=True):
             user_input = st.text_area("Your question", key="chat_input", height=80)
@@ -206,20 +228,42 @@ else:
                     try:
                         headers = {"Authorization": f"Bearer {st.session_state.token}"}
                         payload = {"question": user_input, "rag_strategy": selected_strategy}
-                        if selected_dataset_ids_for_query: payload["dataset_ids"] = selected_dataset_ids_for_query
+                        if selected_dataset_ids_for_query:
+                            payload["dataset_ids"] = selected_dataset_ids_for_query
                         resp = api_request("POST", f"{BACKEND_URL}/chat/query/", json=payload, headers=headers, timeout=60)
                         if resp and resp.status_code == 200:
                             data = resp.json()
-                            st.session_state.chat_history.append({"role": "assistant", "content": data.get("answer"), "strategy_used": data.get("strategy_used"), "sources": data.get("sources")})
+                            st.session_state.chat_history.append({
+                                "role": "assistant",
+                                "content": data.get("answer"),
+                                "strategy_used": data.get("strategy_used"),
+                                "sources": data.get("sources")
+                            })
                         else:
                             detail = resp.text if resp else "No response"
-                            try: detail = resp.json().get("detail", detail)
-                            except: pass
-                            st.session_state.chat_history.append({"role": "assistant", "content": f"(Error: {detail})", "strategy_used": selected_strategy})
-                    except Exception as e: st.session_state.chat_history.append({"role": "assistant", "content": f"(Error: {e})", "strategy_used": selected_strategy})
-                    finally: st.session_state.chat_loading = False; st.rerun()
-        if st.session_state.chat_loading: st.info(f"AI is thinking (using {selected_strategy} strategy)...")
-        if st.button("Clear Chat History"): st.session_state.chat_history = []; st.rerun()
+                            try:
+                                detail = resp.json().get("detail", detail)
+                            except Exception:
+                                pass
+                            st.session_state.chat_history.append({
+                                "role": "assistant",
+                                "content": f"(Error: {detail})",
+                                "strategy_used": selected_strategy
+                            })
+                    except Exception as e:
+                        st.session_state.chat_history.append({
+                            "role": "assistant",
+                            "content": f"(Error: {e})",
+                            "strategy_used": selected_strategy
+                        })
+                    finally:
+                        st.session_state.chat_loading = False
+                        st.rerun()
+        if st.session_state.chat_loading:
+            st.info(f"AI is thinking (using {selected_strategy} strategy)...")
+        if st.button("Clear Chat History"):
+            st.session_state.chat_history = []
+            st.rerun()
 
     elif st.session_state.main_app_page == "Document Management":
         st.title("Document Management")
