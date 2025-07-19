@@ -43,6 +43,29 @@ if "main_app_page" not in st.session_state:
     if "files_in_selected_dataset" not in st.session_state:
         st.session_state.files_in_selected_dataset = []
 
+# --- Common API call helper with auth error handling ---
+def api_request(method, url, **kwargs):
+    """
+    Common API request helper that handles authentication errors.
+    If a 401 Unauthorized error is detected, clears token and redirects to login.
+    """
+    try:
+        response = requests.request(method, url, **kwargs)
+        if response.status_code == 401:
+            # Authentication error: clear session and redirect to login
+            st.session_state.token = None
+            st.session_state.user = None
+            st.session_state.page = "login"
+            st.error("認証が切れました。再度ログインしてください。")
+            st.experimental_rerun()
+        return response
+    except requests.exceptions.ConnectionError:
+        st.error("Connection Error: Could not connect to the backend.")
+        return None
+    except Exception as e:
+        st.error(f"An unexpected error occurred: {e}")
+        return None
+
 # --- Authentication Functions ---
 def login(username, password):
     try:
@@ -101,17 +124,13 @@ def get_user_datasets():
         st.session_state.datasets = []
         return False
     headers = {"Authorization": f"Bearer {st.session_state.token}"}
-    try:
-        response = requests.get(f"{BACKEND_URL}/users/me/datasets/", headers=headers)
-        if response.status_code == 200:
-            st.session_state.datasets = response.json()
-            return True
-        else:
+    response = api_request("GET", f"{BACKEND_URL}/users/me/datasets/", headers=headers)
+    if response and response.status_code == 200:
+        st.session_state.datasets = response.json()
+        return True
+    else:
+        if response:
             st.error(f"Failed to fetch datasets: {response.status_code} - {response.text}")
-            st.session_state.datasets = []
-            return False
-    except Exception as e:
-        st.error(f"Error fetching datasets: {e}")
         st.session_state.datasets = []
         return False
 
@@ -188,13 +207,13 @@ else:
                         headers = {"Authorization": f"Bearer {st.session_state.token}"}
                         payload = {"question": user_input, "rag_strategy": selected_strategy}
                         if selected_dataset_ids_for_query: payload["dataset_ids"] = selected_dataset_ids_for_query
-                        resp = requests.post(f"{BACKEND_URL}/chat/query/", json=payload, headers=headers, timeout=60)
-                        if resp.status_code == 200:
+                        resp = api_request("POST", f"{BACKEND_URL}/chat/query/", json=payload, headers=headers, timeout=60)
+                        if resp and resp.status_code == 200:
                             data = resp.json()
                             st.session_state.chat_history.append({"role": "assistant", "content": data.get("answer"), "strategy_used": data.get("strategy_used"), "sources": data.get("sources")})
                         else:
-                            detail = resp.text; 
-                            try: detail = resp.json().get("detail", resp.text)
+                            detail = resp.text if resp else "No response"
+                            try: detail = resp.json().get("detail", detail)
                             except: pass
                             st.session_state.chat_history.append({"role": "assistant", "content": f"(Error: {detail})", "strategy_used": selected_strategy})
                     except Exception as e: st.session_state.chat_history.append({"role": "assistant", "content": f"(Error: {e})", "strategy_used": selected_strategy})
@@ -208,19 +227,29 @@ else:
         def create_new_dataset(name: str, description = None): # Optional type hint removed
             headers = {"Authorization": f"Bearer {st.session_state.token}"}
             payload = {"name": name, "description": description or ""}
-            try:
-                response = requests.post(f"{BACKEND_URL}/users/me/datasets/", headers=headers, json=payload)
-                if response.status_code == 201: st.success(f"Dataset '{name}' created!"); get_user_datasets(); return True
-                else: st.error(f"Failed to create dataset: {response.status_code} - {response.text}"); return False
-            except Exception as e: st.error(f"Error creating dataset: {e}"); return False
+            response = api_request("POST", f"{BACKEND_URL}/users/me/datasets/", headers=headers, json=payload)
+            if response and response.status_code == 201:
+                st.success(f"Dataset '{name}' created!")
+                get_user_datasets()
+                return True
+            else:
+                if response:
+                    st.error(f"Failed to create dataset: {response.status_code} - {response.text}")
+                return False
         
         def delete_selected_dataset(dataset_id_to_delete: str):
             headers = {"Authorization": f"Bearer {st.session_state.token}"}
-            try:
-                response = requests.delete(f"{BACKEND_URL}/users/me/datasets/{dataset_id_to_delete}/", headers=headers)
-                if response.status_code == 204: st.success(f"Dataset deleted!"); st.session_state.selected_dataset_id=None; st.session_state.files_in_selected_dataset=[]; get_user_datasets(); return True
-                else: st.error(f"Failed to delete dataset: {response.status_code} - {response.text}"); return False
-            except Exception as e: st.error(f"Error deleting dataset: {e}"); return False
+            response = api_request("DELETE", f"{BACKEND_URL}/users/me/datasets/{dataset_id_to_delete}/", headers=headers)
+            if response and response.status_code == 204:
+                st.success(f"Dataset deleted!")
+                st.session_state.selected_dataset_id=None
+                st.session_state.files_in_selected_dataset=[]
+                get_user_datasets()
+                return True
+            else:
+                if response:
+                    st.error(f"Failed to delete dataset: {response.status_code} - {response.text}")
+                return False
 
         st.subheader("Your Datasets")
         with st.expander("Create New Dataset", expanded=False):
@@ -255,18 +284,24 @@ else:
             else: st.subheader(f"Files in: \"{sel_ds['name']}\"")
             def get_files():
                 h={"Authorization":f"Bearer {st.session_state.token}"}
-                try:
-                    r=requests.get(f"{BACKEND_URL}/users/me/datasets/{st.session_state.selected_dataset_id}/documents/",headers=h)
-                    if r.status_code==200: st.session_state.files_in_selected_dataset=r.json()
-                    else: st.error(f"Failed to fetch files: {r.status_code}-{r.text}"); st.session_state.files_in_selected_dataset=[]
-                except Exception as e:st.error(f"Error fetching files:{e}");st.session_state.files_in_selected_dataset=[]
+                response = api_request("GET", f"{BACKEND_URL}/users/me/datasets/{st.session_state.selected_dataset_id}/documents/", headers=h)
+                if response and response.status_code==200:
+                    st.session_state.files_in_selected_dataset=response.json()
+                else:
+                    if response:
+                        st.error(f"Failed to fetch files: {response.status_code}-{response.text}")
+                    st.session_state.files_in_selected_dataset=[]
             def del_file(d_id:str):
                 h={"Authorization":f"Bearer {st.session_state.token}"}
-                try:
-                    r=requests.delete(f"{BACKEND_URL}/users/me/datasets/{st.session_state.selected_dataset_id}/documents/{d_id}/",headers=h)
-                    if r.status_code==204:st.success("File deleted!");get_files();return True
-                    else:st.error(f"Failed to delete file:{r.status_code}-{r.text}");return False
-                except Exception as e:st.error(f"Error deleting file:{e}");return False
+                response = api_request("DELETE", f"{BACKEND_URL}/users/me/datasets/{st.session_state.selected_dataset_id}/documents/{d_id}/", headers=h)
+                if response and response.status_code==204:
+                    st.success("File deleted!")
+                    get_files()
+                    return True
+                else:
+                    if response:
+                        st.error(f"Failed to delete file:{response.status_code}-{response.text}")
+                    return False
             if not st.session_state.files_in_selected_dataset and st.session_state.selected_dataset_id:get_files()
             
             st.markdown("#### Upload New Document")
@@ -315,19 +350,21 @@ else:
 
                         st.info(f"Uploading {len(files_to_upload)} file(s)...")
                         try:
-                            rp = requests.post(
+                            rp = api_request(
+                                "POST",
                                 f"{BACKEND_URL}/users/me/datasets/{st.session_state.selected_dataset_id}/documents/upload/",
                                 headers=h_auth,
                                 files=files_to_upload,
                                 data=fd_pl,
                                 timeout=300
                             )
-                            if rp.status_code == 200:
+                            if rp and rp.status_code == 200:
                                 uploaded_filenames = [f.name for f in uploaded_files]
                                 st.success(f"Successfully uploaded: {', '.join(uploaded_filenames)}")
                                 get_files()
                             else:
-                                st.error(f"Upload failed: {rp.status_code} - {rp.text}")
+                                if rp:
+                                    st.error(f"Upload failed: {rp.status_code} - {rp.text}")
                         except Exception as e:
                             st.error(f"An error occurred during upload: {e}")
                         st.rerun()
