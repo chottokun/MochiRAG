@@ -2,7 +2,6 @@ import streamlit as st
 import requests
 import json
 
-# Attempt to import AVAILABLE_RAG_STRATEGIES for the dropdown
 try:
     from core.rag_chain import AVAILABLE_RAG_STRATEGIES
     from core.embedding_manager import embedding_manager
