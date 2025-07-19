@@ -534,7 +534,7 @@ async def query_rag_chat(
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Specified data_source_id {first_file_id_to_check} not found.")
 
     elif query_request.dataset_ids is not None:
-        # 空リストなら何も対象にしない（404）
+        # If an empty list is provided, it means no datasets are targeted, so return 404.
         if isinstance(query_request.dataset_ids, list) and len(query_request.dataset_ids) == 0:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No dataset selected for query.")
         first_strategy_set = False
