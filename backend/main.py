@@ -307,11 +307,11 @@ async def upload_document_deprecated(
     )
 
 
-@app.post("/users/me/datasets/{dataset_id}/documents/upload/", response_model=DataSourceMeta)
-async def upload_document_to_dataset(
+@app.post("/users/me/datasets/{dataset_id}/documents/upload/", response_model=List[DataSourceMeta])
+async def upload_documents_to_dataset(
     dataset_id: uuid.UUID,
     current_user: User = Depends(auth.get_current_active_user),
-    file: UploadFile = File(...),
+    files: List[UploadFile] = File(...),
     embedding_strategy: Optional[str] = Form(None),
     chunking_strategy: Optional[str] = Form(None),
     chunking_params_json: Optional[str] = Form(None)
@@ -325,119 +325,108 @@ async def upload_document_to_dataset(
     if not any(ds.dataset_id == dataset_id for ds in user_owned_datasets):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found or access denied.")
 
-    original_filename = file.filename if file.filename else "unknown_file"
-    file_extension = Path(original_filename).suffix.lstrip('.').lower()
+    datasources_meta_storage = _read_datasources_meta()
+    user_specific_datasources = datasources_meta_storage.get(user_id_str, {})
+    dataset_specific_files = user_specific_datasources.get(dataset_id_str, [])
 
-    if file_extension not in SUPPORTED_FILE_TYPES.__args__: # type: ignore
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unsupported file type: '{file_extension}'. Supported types are: {', '.join(SUPPORTED_FILE_TYPES.__args__)}" # type: ignore
-        )
+    processed_files_meta = []
 
-    data_source_id = f"{original_filename}_{uuid.uuid4().hex[:8]}" # Unique ID for this file
-    temp_file_path = TMP_UPLOAD_DIR / f"{uuid.uuid4().hex}_{original_filename}"
+    for file in files:
+        original_filename = file.filename if file.filename else "unknown_file"
+        file_extension = Path(original_filename).suffix.lstrip('.').lower()
 
-    emb_strategy_name = embedding_strategy or embedding_manager.default_strategy_name
-    if not emb_strategy_name:
-        # No need to unlink temp_file_path here as it's not created yet
-        raise HTTPException(status_code=503, detail="Service Unavailable: Embedding strategies not properly configured.")
+        if file_extension not in SUPPORTED_FILE_TYPES.__args__: # type: ignore
+            # Skip unsupported files, or collect errors to report at the end
+            print(f"Skipping unsupported file type: {original_filename}")
+            continue
 
-    chk_strategy_name = chunking_strategy or chunking_manager.default_strategy_name
-    if not chk_strategy_name:
-        # No need to unlink temp_file_path here
-        raise HTTPException(status_code=503, detail="Service Unavailable: Chunking strategies not properly configured.")
+        data_source_id = f"{original_filename}_{uuid.uuid4().hex[:8]}" # Unique ID for this file
+        temp_file_path = TMP_UPLOAD_DIR / f"{uuid.uuid4().hex}_{original_filename}"
 
-    chk_params: Optional[Dict[str, Any]] = None
-    if chunking_params_json:
+        emb_strategy_name = embedding_strategy or embedding_manager.default_strategy_name
+        if not emb_strategy_name:
+            raise HTTPException(status_code=503, detail="Service Unavailable: Embedding strategies not properly configured.")
+
+        chk_strategy_name = chunking_strategy or chunking_manager.default_strategy_name
+        if not chk_strategy_name:
+            raise HTTPException(status_code=503, detail="Service Unavailable: Chunking strategies not properly configured.")
+
+        chk_params: Optional[Dict[str, Any]] = None
+        if chunking_params_json:
+            try:
+                chk_params = json.loads(chunking_params_json)
+            except json.JSONDecodeError:
+                raise HTTPException(status_code=400, detail="Invalid JSON format for chunking_params_json.")
+
+        if emb_strategy_name not in embedding_manager.get_available_strategies():
+            raise HTTPException(status_code=400, detail=f"Invalid embedding strategy: {emb_strategy_name}")
+
         try:
-            chk_params = json.loads(chunking_params_json)
-        except json.JSONDecodeError:
-            # No need to unlink temp_file_path here
-            raise HTTPException(status_code=400, detail="Invalid JSON format for chunking_params_json.")
+            with open(temp_file_path, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
 
-    if emb_strategy_name not in embedding_manager.get_available_strategies():
-        # No need to unlink temp_file_path here
-        raise HTTPException(status_code=400, detail=f"Invalid embedding strategy: {emb_strategy_name}")
+            effective_chunk_params = chk_params or {}
+            chunk_size_to_use = effective_chunk_params.get("chunk_size", 1000)
+            chunk_overlap_to_use = effective_chunk_params.get("chunk_overlap", 200)
 
-    try:
-        with open(temp_file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-        
-        effective_chunk_params = chk_params or {}
-        # Use specific params if provided, else defaults that load_and_split_document might have
-        chunk_size_to_use = effective_chunk_params.get("chunk_size", 1000) 
-        chunk_overlap_to_use = effective_chunk_params.get("chunk_overlap", 200)
+            split_docs_to_process = load_and_split_document(
+                file_path=str(temp_file_path),
+                file_type=file_extension, # type: ignore
+                chunk_size=chunk_size_to_use,
+                chunk_overlap=chunk_overlap_to_use
+            )
 
-        # Use load_and_split_document from core.document_processor
-        split_docs_to_process = load_and_split_document(
-            file_path=str(temp_file_path),
-            file_type=file_extension, # type: ignore 
-            chunk_size=chunk_size_to_use,
-            chunk_overlap=chunk_overlap_to_use
-        )
-        
-        if not split_docs_to_process:
-             if temp_file_path.exists(): temp_file_path.unlink() # Clean up temp file
-             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Document is empty or could not be loaded/split into processable chunks.")
+            if not split_docs_to_process:
+                 if temp_file_path.exists(): temp_file_path.unlink()
+                 print(f"Skipping empty or unprocessable file: {original_filename}")
+                 continue
 
-        # Pass the already chunked documents to the vector store manager
-        num_added_to_vsm = vector_store_manager.add_documents(
-            user_id=user_id_str,
-            data_source_id=data_source_id, 
-            documents=split_docs_to_process, # List of Langchain Document chunks
-            embedding_strategy_name=emb_strategy_name,
-            # These chunking details are for metadata; actual chunking was done above by load_and_split_document.
-            chunking_strategy_name=chk_strategy_name, 
-            chunking_params=effective_chunk_params, # Pass the actual params used for chunking for metadata
-            dataset_id=dataset_id_str # Pass dataset_id for VSM metadata/namespacing
-        )
+            num_added_to_vsm = vector_store_manager.add_documents(
+                user_id=user_id_str,
+                data_source_id=data_source_id,
+                documents=split_docs_to_process,
+                embedding_strategy_name=emb_strategy_name,
+                chunking_strategy_name=chk_strategy_name,
+                chunking_params=effective_chunk_params,
+                dataset_id=dataset_id_str
+            )
 
-        if num_added_to_vsm == 0 and split_docs_to_process: # Should not happen if VSM worked correctly
-            if temp_file_path.exists(): temp_file_path.unlink() # Clean up temp file
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to add document chunks to vector store after processing.")
+            if num_added_to_vsm == 0 and split_docs_to_process:
+                if temp_file_path.exists(): temp_file_path.unlink()
+                print(f"Failed to add chunks to vector store for file: {original_filename}")
+                continue
 
-        # Get the actual configuration of the chunking strategy used for metadata recording
-        final_chunking_strategy_instance = chunking_manager.get_strategy(chk_strategy_name, params=effective_chunk_params)
-        final_chunking_config_recorded = final_chunking_strategy_instance.get_config()
+            final_chunking_strategy_instance = chunking_manager.get_strategy(chk_strategy_name, params=effective_chunk_params)
+            final_chunking_config_recorded = final_chunking_strategy_instance.get_config()
 
-        # Update datasources_meta.json
-        datasources_meta_storage = _read_datasources_meta()
-        user_specific_datasources = datasources_meta_storage.get(user_id_str, {})
-        dataset_specific_files = user_specific_datasources.get(dataset_id_str, [])
-        
-        new_meta = DataSourceMeta(
-            data_source_id=data_source_id,
-            dataset_id=dataset_id, # Store the UUID object from path parameter
-            original_filename=original_filename,
-            status="processed",
-            uploaded_at=datetime.now(timezone.utc).isoformat(),
-            chunk_count=len(split_docs_to_process), # Number of chunks created by load_and_split_document
-            embedding_strategy_used=emb_strategy_name,
-            chunking_strategy_used=final_chunking_strategy_instance.get_name(), # Name of the strategy
-            chunking_config_used=final_chunking_config_recorded # Actual config used
-        )
-        dataset_specific_files.append(new_meta)
+            new_meta = DataSourceMeta(
+                data_source_id=data_source_id,
+                dataset_id=dataset_id,
+                original_filename=original_filename,
+                status="processed",
+                uploaded_at=datetime.now(timezone.utc).isoformat(),
+                chunk_count=len(split_docs_to_process),
+                embedding_strategy_used=emb_strategy_name,
+                chunking_strategy_used=final_chunking_strategy_instance.get_name(),
+                chunking_config_used=final_chunking_config_recorded
+            )
+            dataset_specific_files.append(new_meta)
+            processed_files_meta.append(new_meta)
+
+        except Exception as e:
+            print(f"Error processing file {original_filename}: {e}")
+            # Decide if one failure should stop the whole batch
+        finally:
+            if temp_file_path.exists():
+                temp_file_path.unlink()
+            file.file.close()
+
+    if processed_files_meta:
         user_specific_datasources[dataset_id_str] = dataset_specific_files
         datasources_meta_storage[user_id_str] = user_specific_datasources
         _write_datasources_meta(datasources_meta_storage)
 
-        return new_meta
-    except HTTPException:
-        # Ensure temp file is cleaned up if it exists, even on known HTTPExceptions from this block
-        if temp_file_path.exists(): temp_file_path.unlink()
-        raise
-    except Exception as e:
-        # Ensure temp file is cleaned up on any other unexpected exception
-        if temp_file_path.exists(): temp_file_path.unlink()
-        # logger.error(f"Error during document upload to dataset {dataset_id_str} for user {user_id_str}: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"An unexpected error occurred processing file: {str(e)}")
-    finally:
-        # Final cleanup check, though individual error paths should also clean up.
-        if temp_file_path.exists():
-            temp_file_path.unlink()
-        # Ensure the uploaded file stream is closed by FastAPI/Starlette,
-        # but if direct manipulation, file.file.close() might be needed.
-        # Given UploadFile, FastAPI handles this.
+    return processed_files_meta
 
 @app.get("/users/me/datasets/{dataset_id}/documents/", response_model=List[DataSourceMeta])
 async def list_documents_in_dataset(
@@ -537,26 +526,24 @@ async def query_rag_chat(
             meta_found = None
             for dataset_files in all_user_files_by_dataset.values():
                 meta_found = next((meta for meta in dataset_files if meta.data_source_id == first_file_id_to_check), None)
-                if meta_found: break
+                if meta_found:
+                    break
             if meta_found and meta_found.embedding_strategy_used:
                 embedding_strategy_for_retrieval = meta_found.embedding_strategy_used
             elif not meta_found:
-                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Specified data_source_id {first_file_id_to_check} not found.")
-    
-    elif query_request.dataset_ids:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Specified data_source_id {first_file_id_to_check} not found.")
+
+    elif query_request.dataset_ids is not None:
+        # If an empty list is provided, it means no datasets are targeted, so return 404.
+        if isinstance(query_request.dataset_ids, list) and len(query_request.dataset_ids) == 0:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No dataset selected for query.")
         first_strategy_set = False
         for dataset_uuid in query_request.dataset_ids:
             dataset_str_id = str(dataset_uuid)
             # Ensure the queried dataset belongs to the user
-            user_actual_datasets = _read_datasets_meta().get(user_id_str, []) # Read dataset definitions
+            user_actual_datasets = _read_datasets_meta().get(user_id_str, [])
             if not any(ds.dataset_id == dataset_uuid for ds in user_actual_datasets):
-                # Allow if dataset_id is not in user's datasets_meta, but files exist under it in datasources_meta
-                # This might indicate an orphaned dataset in datasources_meta, but we can still query if files are there.
-                # For stricter check, enable the following:
-                # raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"Access to dataset {dataset_str_id} is forbidden or dataset not found.")
                 pass
-
-
             files_in_dataset = all_user_files_by_dataset.get(dataset_str_id, [])
             for file_meta in files_in_dataset:
                 target_data_source_ids_for_query.append(file_meta.data_source_id)

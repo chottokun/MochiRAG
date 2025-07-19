@@ -1,13 +1,11 @@
 import streamlit as st
 import requests
 import json
-from typing import List, Dict, Any # Optional を削除
 
-# Attempt to import AVAILABLE_RAG_STRATEGIES for the dropdown
 try:
     from core.rag_chain import AVAILABLE_RAG_STRATEGIES
-    from core.embedding_manager import embedding_manager 
-    from core.chunking_manager import chunking_manager 
+    from core.embedding_manager import embedding_manager
+    from core.chunking_manager import chunking_manager
 except ImportError:
     import sys
     from pathlib import Path
@@ -20,28 +18,54 @@ except ImportError:
         from core.chunking_manager import chunking_manager
     except ImportError:
         AVAILABLE_RAG_STRATEGIES = ["basic"]
-        st.warning("Could not load RAG, Embedding, or Chunking strategies from core modules. Defaulting to 'basic'. Ensure PYTHONPATH is set correctly.")
-        embedding_manager = None 
+        st.warning(
+            "Could not load RAG, Embedding, or Chunking strategies from core modules. "
+            "Defaulting to 'basic'. Ensure PYTHONPATH is set correctly."
+        )
+        embedding_manager = None
         chunking_manager = None
 
 # --- Configuration ---
-BACKEND_URL = "http://localhost:8000" 
+BACKEND_URL = "http://localhost:8000"
 
 # --- Session State Initialization ---
 if "token" not in st.session_state:
     st.session_state.token = None
-if "user" not in st.session_state: 
+if "user" not in st.session_state:
     st.session_state.user = None
-if "page" not in st.session_state: 
+if "page" not in st.session_state:
     st.session_state.page = "login"
-if "main_app_page" not in st.session_state: 
+if "main_app_page" not in st.session_state:
     st.session_state.main_app_page = "Chat"
-    if "datasets" not in st.session_state:
-        st.session_state.datasets = [] 
-    if "selected_dataset_id" not in st.session_state:
-        st.session_state.selected_dataset_id = None
-    if "files_in_selected_dataset" not in st.session_state:
-        st.session_state.files_in_selected_dataset = []
+if "datasets" not in st.session_state:
+    st.session_state.datasets = []
+if "selected_dataset_id" not in st.session_state:
+    st.session_state.selected_dataset_id = None
+if "files_in_selected_dataset" not in st.session_state:
+    st.session_state.files_in_selected_dataset = []
+
+# --- Common API call helper with auth error handling ---
+def api_request(method, url, **kwargs):
+    """
+    Common API request helper that handles authentication errors.
+    If a 401 Unauthorized error is detected, clears token and redirects to login.
+    """
+    try:
+        response = requests.request(method, url, **kwargs)
+        if response.status_code == 401:
+            # Authentication error: clear session and redirect to login
+            st.session_state.token = None
+            st.session_state.user = None
+            st.session_state.page = "login"
+            st.error("認証が切れました。再度ログインしてください。")
+            st.experimental_rerun()
+        return response
+    except requests.exceptions.ConnectionError:
+        st.error("Connection Error: Could not connect to the backend.")
+        return None
+    except Exception as e:
+        st.error(f"An unexpected error occurred: {e}")
+        return None
 
 # --- Authentication Functions ---
 def login(username, password):
@@ -67,8 +91,10 @@ def login(username, password):
     except requests.exceptions.ConnectionError:
         st.error("Connection Error: Could not connect to the backend.")
         return False
-    except json.JSONDecodeError: st.error("Received an invalid response from the server.")
-    except Exception as e: st.error(f"An unexpected error during login: {e}")
+    except json.JSONDecodeError:
+        st.error("Received an invalid response from the server.")
+    except Exception as e:
+        st.error(f"An unexpected error during login: {e}")
     return False
 
 def register(username, email, password):
@@ -85,8 +111,10 @@ def register(username, email, password):
             except json.JSONDecodeError: detail = response.text
             st.error(f"Registration failed: {detail}")
             return False
-    except requests.exceptions.ConnectionError: st.error("Connection Error: Could not connect to the backend.")
-    except Exception as e: st.error(f"An unexpected error during registration: {e}")
+    except requests.exceptions.ConnectionError:
+        st.error("Connection Error: Could not connect to the backend.")
+    except Exception as e:
+        st.error(f"An unexpected error during registration: {e}")
     return False
 
 def logout():
@@ -101,17 +129,13 @@ def get_user_datasets():
         st.session_state.datasets = []
         return False
     headers = {"Authorization": f"Bearer {st.session_state.token}"}
-    try:
-        response = requests.get(f"{BACKEND_URL}/users/me/datasets/", headers=headers)
-        if response.status_code == 200:
-            st.session_state.datasets = response.json()
-            return True
-        else:
+    response = api_request("GET", f"{BACKEND_URL}/users/me/datasets/", headers=headers)
+    if response and response.status_code == 200:
+        st.session_state.datasets = response.json()
+        return True
+    else:
+        if response:
             st.error(f"Failed to fetch datasets: {response.status_code} - {response.text}")
-            st.session_state.datasets = []
-            return False
-    except Exception as e:
-        st.error(f"Error fetching datasets: {e}")
         st.session_state.datasets = []
         return False
 
@@ -147,23 +171,41 @@ else:
     if st.session_state.main_app_page == "Chat":
         st.title("Chat Page")
         st.sidebar.subheader("RAG Strategy")
-        selected_strategy = st.sidebar.selectbox("Choose a RAG strategy:", options=AVAILABLE_RAG_STRATEGIES, 
-                                                 index=AVAILABLE_RAG_STRATEGIES.index("basic") if "basic" in AVAILABLE_RAG_STRATEGIES else 0, 
-                                                 key="rag_strategy_selector")
+        selected_strategy = st.sidebar.selectbox(
+            "Choose a RAG strategy:",
+            options=AVAILABLE_RAG_STRATEGIES,
+            index=AVAILABLE_RAG_STRATEGIES.index("basic") if "basic" in AVAILABLE_RAG_STRATEGIES else 0,
+            key="rag_strategy_selector"
+        )
         st.sidebar.caption(f"Current strategy: **{selected_strategy}**")
-        if "show_references" not in st.session_state: st.session_state.show_references = False
-        st.session_state.show_references = st.sidebar.checkbox("Show references/sources", value=st.session_state.show_references, key="show_references_checkbox")
-        
+        if "show_references" not in st.session_state:
+            st.session_state.show_references = False
+        st.session_state.show_references = st.sidebar.checkbox(
+            "Show references/sources",
+            value=st.session_state.show_references,
+            key="show_references_checkbox"
+        )
+
         st.sidebar.subheader("Target Datasets for Chat")
-        if not st.session_state.datasets: get_user_datasets()
+        if not st.session_state.datasets:
+            get_user_datasets()
         dataset_options = {ds['name']: ds['dataset_id'] for ds in st.session_state.datasets}
-        selected_dataset_names = st.sidebar.multiselect("Select datasets to query (default: all):", options=list(dataset_options.keys()), key="chat_dataset_selector")
+        all_dataset_names = list(dataset_options.keys())
+        selected_dataset_names = st.sidebar.multiselect(
+            "Select datasets to query (default: all):",
+            options=all_dataset_names,
+            default=all_dataset_names,
+            key="chat_dataset_selector"
+        )
         selected_dataset_ids_for_query = [dataset_options[name] for name in selected_dataset_names if name in dataset_options]
 
-        if "chat_history" not in st.session_state: st.session_state.chat_history = []
-        if "chat_loading" not in st.session_state: st.session_state.chat_loading = False
+        if "chat_history" not in st.session_state:
+            st.session_state.chat_history = []
+        if "chat_loading" not in st.session_state:
+            st.session_state.chat_loading = False
         for msg in st.session_state.chat_history:
-            if msg["role"] == "user": st.markdown(f"**You:** {msg['content']}")
+            if msg["role"] == "user":
+                st.markdown(f"**You:** {msg['content']}")
             else:
                 ai_text = f"<span style='color: #2b7cff'><b>AI</b>{' (<i>'+msg.get('strategy_used','')+')</i>' if msg.get('strategy_used') else ''}:</span> {msg['content']}"
                 st.markdown(ai_text, unsafe_allow_html=True)
@@ -172,11 +214,15 @@ else:
                         for i, src in enumerate(msg["sources"]):
                             src_text = f"**Source {i+1}:**"
                             meta = src.get("metadata", {})
-                            if meta.get("original_filename"): src_text += f" `{meta['original_filename']}`"
-                            elif meta.get("data_source_id"): src_text += f" ID: `{meta['data_source_id']}`"
-                            if meta.get("page") is not None: src_text += f" (Page: {meta['page'] + 1})"
+                            if meta.get("original_filename"):
+                                src_text += f" `{meta['original_filename']}`"
+                            elif meta.get("data_source_id"):
+                                src_text += f" ID: `{meta['data_source_id']}`"
+                            if meta.get("page") is not None:
+                                src_text += f" (Page: {meta['page'] + 1})"
                             st.markdown(src_text, unsafe_allow_html=True)
-                            if src.get("page_content","")[:150]: st.caption(f"> {src['page_content'][:150]}...")
+                            if src.get("page_content", "")[:150]:
+                                st.caption(f"> {src['page_content'][:150]}...")
                         st.markdown("---")
         with st.form("chat_form", clear_on_submit=True):
             user_input = st.text_area("Your question", key="chat_input", height=80)
@@ -187,20 +233,45 @@ else:
                     try:
                         headers = {"Authorization": f"Bearer {st.session_state.token}"}
                         payload = {"question": user_input, "rag_strategy": selected_strategy}
-                        if selected_dataset_ids_for_query: payload["dataset_ids"] = selected_dataset_ids_for_query
-                        resp = requests.post(f"{BACKEND_URL}/chat/query/", json=payload, headers=headers, timeout=60)
-                        if resp.status_code == 200:
-                            data = resp.json()
-                            st.session_state.chat_history.append({"role": "assistant", "content": data.get("answer"), "strategy_used": data.get("strategy_used"), "sources": data.get("sources")})
+                        # データセット選択が空の場合は空リストを送信
+                        if selected_dataset_ids_for_query:
+                            payload["dataset_ids"] = selected_dataset_ids_for_query
                         else:
-                            detail = resp.text; 
-                            try: detail = resp.json().get("detail", resp.text)
-                            except: pass
-                            st.session_state.chat_history.append({"role": "assistant", "content": f"(Error: {detail})", "strategy_used": selected_strategy})
-                    except Exception as e: st.session_state.chat_history.append({"role": "assistant", "content": f"(Error: {e})", "strategy_used": selected_strategy})
-                    finally: st.session_state.chat_loading = False; st.rerun()
-        if st.session_state.chat_loading: st.info(f"AI is thinking (using {selected_strategy} strategy)...")
-        if st.button("Clear Chat History"): st.session_state.chat_history = []; st.rerun()
+                            payload["dataset_ids"] = []
+                        resp = api_request("POST", f"{BACKEND_URL}/chat/query/", json=payload, headers=headers, timeout=60)
+                        if resp and resp.status_code == 200:
+                            data = resp.json()
+                            st.session_state.chat_history.append({
+                                "role": "assistant",
+                                "content": data.get("answer"),
+                                "strategy_used": data.get("strategy_used"),
+                                "sources": data.get("sources")
+                            })
+                        else:
+                            detail = resp.text if resp else "No response"
+                            try:
+                                detail = resp.json().get("detail", detail)
+                            except Exception:
+                                pass
+                            st.session_state.chat_history.append({
+                                "role": "assistant",
+                                "content": f"(Error: {detail})",
+                                "strategy_used": selected_strategy
+                            })
+                    except Exception as e:
+                        st.session_state.chat_history.append({
+                            "role": "assistant",
+                            "content": f"(Error: {e})",
+                            "strategy_used": selected_strategy
+                        })
+                    finally:
+                        st.session_state.chat_loading = False
+                        st.rerun()
+        if st.session_state.chat_loading:
+            st.info(f"AI is thinking (using {selected_strategy} strategy)...")
+        if st.button("Clear Chat History"):
+            st.session_state.chat_history = []
+            st.rerun()
 
     elif st.session_state.main_app_page == "Document Management":
         st.title("Document Management")
@@ -208,19 +279,29 @@ else:
         def create_new_dataset(name: str, description = None): # Optional type hint removed
             headers = {"Authorization": f"Bearer {st.session_state.token}"}
             payload = {"name": name, "description": description or ""}
-            try:
-                response = requests.post(f"{BACKEND_URL}/users/me/datasets/", headers=headers, json=payload)
-                if response.status_code == 201: st.success(f"Dataset '{name}' created!"); get_user_datasets(); return True
-                else: st.error(f"Failed to create dataset: {response.status_code} - {response.text}"); return False
-            except Exception as e: st.error(f"Error creating dataset: {e}"); return False
+            response = api_request("POST", f"{BACKEND_URL}/users/me/datasets/", headers=headers, json=payload)
+            if response and response.status_code == 201:
+                st.success(f"Dataset '{name}' created!")
+                get_user_datasets()
+                return True
+            else:
+                if response:
+                    st.error(f"Failed to create dataset: {response.status_code} - {response.text}")
+                return False
         
         def delete_selected_dataset(dataset_id_to_delete: str):
             headers = {"Authorization": f"Bearer {st.session_state.token}"}
-            try:
-                response = requests.delete(f"{BACKEND_URL}/users/me/datasets/{dataset_id_to_delete}/", headers=headers)
-                if response.status_code == 204: st.success(f"Dataset deleted!"); st.session_state.selected_dataset_id=None; st.session_state.files_in_selected_dataset=[]; get_user_datasets(); return True
-                else: st.error(f"Failed to delete dataset: {response.status_code} - {response.text}"); return False
-            except Exception as e: st.error(f"Error deleting dataset: {e}"); return False
+            response = api_request("DELETE", f"{BACKEND_URL}/users/me/datasets/{dataset_id_to_delete}/", headers=headers)
+            if response and response.status_code == 204:
+                st.success(f"Dataset deleted!")
+                st.session_state.selected_dataset_id=None
+                st.session_state.files_in_selected_dataset=[]
+                get_user_datasets()
+                return True
+            else:
+                if response:
+                    st.error(f"Failed to delete dataset: {response.status_code} - {response.text}")
+                return False
 
         st.subheader("Your Datasets")
         with st.expander("Create New Dataset", expanded=False):
@@ -255,18 +336,24 @@ else:
             else: st.subheader(f"Files in: \"{sel_ds['name']}\"")
             def get_files():
                 h={"Authorization":f"Bearer {st.session_state.token}"}
-                try:
-                    r=requests.get(f"{BACKEND_URL}/users/me/datasets/{st.session_state.selected_dataset_id}/documents/",headers=h)
-                    if r.status_code==200: st.session_state.files_in_selected_dataset=r.json()
-                    else: st.error(f"Failed to fetch files: {r.status_code}-{r.text}"); st.session_state.files_in_selected_dataset=[]
-                except Exception as e:st.error(f"Error fetching files:{e}");st.session_state.files_in_selected_dataset=[]
+                response = api_request("GET", f"{BACKEND_URL}/users/me/datasets/{st.session_state.selected_dataset_id}/documents/", headers=h)
+                if response and response.status_code==200:
+                    st.session_state.files_in_selected_dataset=response.json()
+                else:
+                    if response:
+                        st.error(f"Failed to fetch files: {response.status_code}-{response.text}")
+                    st.session_state.files_in_selected_dataset=[]
             def del_file(d_id:str):
                 h={"Authorization":f"Bearer {st.session_state.token}"}
-                try:
-                    r=requests.delete(f"{BACKEND_URL}/users/me/datasets/{st.session_state.selected_dataset_id}/documents/{d_id}/",headers=h)
-                    if r.status_code==204:st.success("File deleted!");get_files();return True
-                    else:st.error(f"Failed to delete file:{r.status_code}-{r.text}");return False
-                except Exception as e:st.error(f"Error deleting file:{e}");return False
+                response = api_request("DELETE", f"{BACKEND_URL}/users/me/datasets/{st.session_state.selected_dataset_id}/documents/{d_id}/", headers=h)
+                if response and response.status_code==204:
+                    st.success("File deleted!")
+                    get_files()
+                    return True
+                else:
+                    if response:
+                        st.error(f"Failed to delete file:{response.status_code}-{response.text}")
+                    return False
             if not st.session_state.files_in_selected_dataset and st.session_state.selected_dataset_id:get_files()
             
             st.markdown("#### Upload New Document")
@@ -287,20 +374,51 @@ else:
             ul_chk_strat=st.selectbox("Chk Strat:",options=chk_strats,key="ul_chk")
             ul_cs=st.number_input("Chunk Size",value=1000,min_value=100,step=50,key="ul_cs_val")
             ul_co=st.number_input("Chunk Overlap",value=200,min_value=0,step=20,key="ul_co_val")
-            with st.form("ul_file_ds_form",clear_on_submit=True):
-                ul_f=st.file_uploader("Upload (TXT,MD,PDF)",type=["txt","md","pdf"],key="f_ul_ds")
+            with st.form("ul_file_ds_form", clear_on_submit=True):
+                uploaded_files = st.file_uploader(
+                    "Upload (TXT, MD, PDF)",
+                    type=["txt", "md", "pdf"],
+                    key="f_ul_ds",
+                    accept_multiple_files=True
+                )
                 if st.form_submit_button("Upload to Dataset"):
-                    if ul_f and st.session_state.selected_dataset_id:
-                        pl={"emb_strat":ul_emb_strat if ul_emb_strat!="default"else None,"chk_strat":ul_chk_strat if ul_chk_strat!="default"else None}
-                        if ul_chk_strat and"recursive"in ul_chk_strat.lower():pl["chk_params"]={"chunk_size":ul_cs,"chunk_overlap":ul_co}
-                        fd_pl={"embedding_strategy":pl["emb_strat"],"chunking_strategy":pl["chk_strat"]}
-                        if pl.get("chk_params"):fd_pl['chunking_params_json']=json.dumps(pl["chk_params"])
-                        f_pl={"file":(ul_f.name,ul_f,ul_f.type)};h_auth={"Authorization":f"Bearer {st.session_state.token}"}
+                    if uploaded_files and st.session_state.selected_dataset_id:
+                        pl = {
+                            "emb_strat": ul_emb_strat if ul_emb_strat != "default" else None,
+                            "chk_strat": ul_chk_strat if ul_chk_strat != "default" else None
+                        }
+                        if ul_chk_strat and "recursive" in ul_chk_strat.lower():
+                            pl["chk_params"] = {"chunk_size": ul_cs, "chunk_overlap": ul_co}
+
+                        fd_pl = {
+                            "embedding_strategy": (None, pl["emb_strat"]),
+                            "chunking_strategy": (None, pl["chk_strat"])
+                        }
+                        if pl.get("chk_params"):
+                            fd_pl['chunking_params_json'] = (None, json.dumps(pl["chk_params"]))
+
+                        files_to_upload = [("files", (f.name, f, f.type)) for f in uploaded_files]
+                        h_auth = {"Authorization": f"Bearer {st.session_state.token}"}
+
+                        st.info(f"Uploading {len(files_to_upload)} file(s)...")
                         try:
-                            rp=requests.post(f"{BACKEND_URL}/users/me/datasets/{st.session_state.selected_dataset_id}/documents/upload/",headers=h_auth,files=f_pl,data=fd_pl,timeout=120)
-                            if rp.status_code==200:st.success(f"Doc '{ul_f.name}' uploaded.");get_files()
-                            else:st.error(f"Upload fail:{rp.status_code}-{rp.text}")
-                        except Exception as e:st.error(f"Upload err:{e}")
+                            rp = api_request(
+                                "POST",
+                                f"{BACKEND_URL}/users/me/datasets/{st.session_state.selected_dataset_id}/documents/upload/",
+                                headers=h_auth,
+                                files=files_to_upload,
+                                data=fd_pl,
+                                timeout=300
+                            )
+                            if rp and rp.status_code == 200:
+                                uploaded_filenames = [f.name for f in uploaded_files]
+                                st.success(f"Successfully uploaded: {', '.join(uploaded_filenames)}")
+                                get_files()
+                            else:
+                                if rp:
+                                    st.error(f"Upload failed: {rp.status_code} - {rp.text}")
+                        except Exception as e:
+                            st.error(f"An error occurred during upload: {e}")
                         st.rerun()
             st.markdown("---");st.markdown("#### Documents in Dataset")
             if st.button("Refresh Files",key="ref_files"):get_files();st.rerun()
