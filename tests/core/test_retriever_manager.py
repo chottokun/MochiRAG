@@ -9,7 +9,12 @@ from langchain.retrievers.document_compressors.base import BaseDocumentCompresso
 from langchain.retrievers import ParentDocumentRetriever as LangchainParentDocumentRetriever # Added import for type check
 from langchain.retrievers import ContextualCompressionRetriever # Added import
 
-from core.retriever_manager import RetrieverManager, BasicRetrieverStrategy, MultiQueryRetrieverStrategy, ContextualCompressionRetrieverStrategy, ParentDocumentRetrieverStrategy, DeepRagRetrieverStrategy # Added DeepRagRetrieverStrategy
+from core.retriever_manager import RetrieverManager
+from core.retriever_strategies.basic import BasicRetrieverStrategy
+from core.retriever_strategies.multi_query import MultiQueryRetrieverStrategy
+from core.retriever_strategies.contextual_compression import ContextualCompressionRetrieverStrategy
+from core.retriever_strategies.parent_document import ParentDocumentRetrieverStrategy
+from core.retriever_strategies.deep_rag import DeepRagRetrieverStrategy # Added DeepRagRetrieverStrategy
 from core.config_loader import StrategyConfigError
 from core.embedding_manager import EmbeddingManager
 from core.vector_store_manager import VectorStoreManager
