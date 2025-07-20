@@ -211,3 +211,4 @@ __marimo__/
 
 # Data files
 data/
+core/__pycache__/
