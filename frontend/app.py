@@ -17,10 +17,10 @@ except ImportError:
         from core.embedding_manager import embedding_manager
         from core.chunking_manager import chunking_manager
     except ImportError:
-        AVAILABLE_RAG_STRATEGIES = ["basic"]
+        AVAILABLE_RAG_STRATEGIES = ["simple_rag"]
         st.warning(
             "Could not load RAG, Embedding, or Chunking strategies from core modules. "
-            "Defaulting to 'basic'. Ensure PYTHONPATH is set correctly."
+            "Defaulting to 'simple_rag'. Ensure PYTHONPATH is set correctly."
         )
         embedding_manager = None
         chunking_manager = None
@@ -58,7 +58,7 @@ def api_request(method, url, **kwargs):
             st.session_state.user = None
             st.session_state.page = "login"
             st.error("認証が切れました。再度ログインしてください。")
-            st.experimental_rerun()
+            st.rerun()
         return response
     except requests.exceptions.ConnectionError:
         st.error("Connection Error: Could not connect to the backend.")
@@ -174,7 +174,7 @@ else:
         selected_strategy = st.sidebar.selectbox(
             "Choose a RAG strategy:",
             options=AVAILABLE_RAG_STRATEGIES,
-            index=AVAILABLE_RAG_STRATEGIES.index("basic") if "basic" in AVAILABLE_RAG_STRATEGIES else 0,
+            index=AVAILABLE_RAG_STRATEGIES.index("simple_rag") if "simple_rag" in AVAILABLE_RAG_STRATEGIES else 0,
             key="rag_strategy_selector"
         )
         st.sidebar.caption(f"Current strategy: **{selected_strategy}**")

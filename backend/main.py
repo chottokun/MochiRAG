@@ -4,7 +4,7 @@ import shutil
 import logging
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
-from typing import List, Dict, Any, Optional, Union
+from typing import List, Dict, Any, Optional, get_args, cast
 from functools import lru_cache
 
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Form
@@ -22,7 +22,7 @@ try:
     from core.vector_store_manager import vector_store_manager
     from core.embedding_manager import embedding_manager
     from core.chunking_manager import chunking_manager
-    from core.rag_strategies.factory import rag_strategy_factory, get_available_rag_strategies
+    from core.retriever_strategies.factory import rag_strategy_factory
     from langchain_core.documents import Document
 except ImportError as e:
     import sys
@@ -34,7 +34,7 @@ except ImportError as e:
         from core.vector_store_manager import vector_store_manager
         from core.embedding_manager import embedding_manager
         from core.chunking_manager import chunking_manager
-        from core.rag_strategies.factory import rag_strategy_factory, get_available_rag_strategies
+        from core.retriever_strategies.factory import rag_strategy_factory
         from langchain_core.documents import Document
     except ImportError:
         raise ImportError(f"Could not import core modules. Ensure 'core' is in PYTHONPATH and managers are initialized. Original error: {e}")
@@ -144,7 +144,7 @@ _ensure_datasources_meta_file_exists()
 async def get_user_datasets(current_user: User = Depends(auth.get_current_active_user)) -> List[Dataset]:
     return _read_datasets_meta().get(str(current_user.user_id), [])
 
-async def get_user_datasources(current_user: User = Depends(auth.get_current_active_user)) -> Dict[str, Dict[str, List[DataSourceMeta]]]:
+async def get_user_datasources(current_user: User = Depends(auth.get_current_active_user)) -> Dict[str, List[DataSourceMeta]]:
     return _read_datasources_meta().get(str(current_user.user_id), {})
 
 async def get_dataset_or_404(
@@ -350,25 +350,27 @@ async def upload_document_to_dataset(
     original_filename = file.filename if file.filename else "unknown_file"
     file_extension = Path(original_filename).suffix.lstrip(".").lower()
 
-    if file_extension not in SUPPORTED_FILE_TYPES.__args__:
+    if file_extension not in get_args(SUPPORTED_FILE_TYPES):
         logger.warning(f"Unsupported file type \'{file_extension}\' uploaded by user {user_id_str} to dataset {dataset_id}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unsupported file type: \'{file_extension}\'. Supported types are: {\', \'.join(SUPPORTED_FILE_TYPES.__args__)}"
+            detail=f"Unsupported file type: \'{file_extension}\'. Supported types are: {', '.join(get_args(SUPPORTED_FILE_TYPES))}"
         )
 
     data_source_id = f"{original_filename}_{uuid.uuid4().hex[:8]}"
     temp_file_path = TMP_UPLOAD_DIR / f"{uuid.uuid4().hex}_{original_filename}"
 
-    emb_strategy_name: str = embedding_strategy or embedding_manager.default_strategy_name
+    emb_strategy_name: str = cast(str, embedding_strategy or embedding_manager.default_strategy_name)
     if not emb_strategy_name:
         logger.error("Embedding strategies not properly configured.")
         raise HTTPException(status_code=503, detail="Service Unavailable: Embedding strategies not properly configured.")
+    # assert emb_strategy_name is not None # Pylanceの警告を抑制 (castで対応済み)
 
-    chk_strategy_name: str = chunking_strategy or chunking_manager.default_strategy_name
+    chk_strategy_name: str = cast(str, chunking_strategy or chunking_manager.default_strategy_name)
     if not chk_strategy_name:
         logger.error("Chunking strategies not properly configured.")
         raise HTTPException(status_code=503, detail="Service Unavailable: Chunking strategies not properly configured.")
+    # assert chk_strategy_name is not None # Pylanceの警告を抑制 (castで対応済み)
 
     chk_params: Dict[str, Any] = {}
     if chunking_params_json:
@@ -393,7 +395,7 @@ async def upload_document_to_dataset(
 
         split_docs_to_process: List[Document] = load_and_split_document(
             file_path=str(temp_file_path),
-            file_type=file_extension,
+            file_type=file_extension, # 型キャストを削除
             chunk_size=chunk_size_to_use,
             chunk_overlap=chunk_overlap_to_use
         )
@@ -461,11 +463,14 @@ async def list_documents_in_dataset(
     current_user: User = Depends(auth.get_current_active_user),
     dataset: Dataset = Depends(get_dataset_or_404),
     user_datasources: Dict[str, Dict[str, List[DataSourceMeta]]] = Depends(get_user_datasources)
-):
+) -> List[DataSourceMeta]: # 戻り値の型ヒントを追加
     user_id_str = str(current_user.user_id)
     dataset_id_str = str(dataset_id)
 
-    dataset_specific_files: List[DataSourceMeta] = user_datasources.get(dataset_id_str, [])
+    # user_datasources.get(dataset_id_str, []) は List[DataSourceMeta] を返すため、型エラーは発生しないはず
+    # Pylanceが警告を出すのは、getのデフォルト値が空リストの場合に型推論がうまくいかないためか
+    # 明示的に型をキャストすることでPylanceの警告を回避
+    dataset_specific_files: List[DataSourceMeta] = cast(List[DataSourceMeta], user_datasources.get(dataset_id_str, []))
     return dataset_specific_files
 
 @app.delete("/users/me/datasets/{dataset_id}/documents/{data_source_id}/", status_code=status.HTTP_204_NO_CONTENT)
@@ -479,11 +484,14 @@ async def delete_document_from_dataset(
     user_id_str = str(current_user.user_id)
     dataset_id_str = str(dataset_id)
 
-    if dataset_id_str not in user_datasources:
-        logger.warning(f"Dataset {dataset_id} not found in file metadata for user {user_id_str}")
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset (in file metadata) not found.")
+    # user_datasources.get(dataset_id_str) は Dict[str, List[DataSourceMeta]] を返す可能性があるため、
+    # 存在しない場合は空のリストを返すように修正
+    files_in_dataset: List[DataSourceMeta] = cast(List[DataSourceMeta], user_datasources.get(dataset_id_str, []))
     
-    files_in_dataset: List[DataSourceMeta] = user_datasources[dataset_id_str]
+    if not files_in_dataset: # データセットが存在しないか、ファイルがない場合
+        logger.warning(f"Dataset {dataset_id} not found or empty in file metadata for user {user_id_str}")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset (in file metadata) not found or empty.")
+    
     file_to_delete_idx: int = -1
     for i, file_meta in enumerate(files_in_dataset):
         if file_meta.data_source_id == data_source_id:
@@ -496,10 +504,15 @@ async def delete_document_from_dataset(
 
     files_in_dataset.pop(file_to_delete_idx)
     all_datasources_meta: Dict[str, Dict[str, List[DataSourceMeta]]] = _read_datasources_meta()
-    if not files_in_dataset: 
-        all_datasources_meta[user_id_str].pop(dataset_id_str)
-        if not all_datasources_meta[user_id_str]: 
-             all_datasources_meta.pop(user_id_str, None)
+    
+    # ユーザーのデータソースが存在しない場合を考慮
+    if user_id_str in all_datasources_meta:
+        if not files_in_dataset: 
+            all_datasources_meta[user_id_str].pop(dataset_id_str, None) # Noneを追加してキーが存在しない場合のエラーを回避
+            if not all_datasources_meta[user_id_str]: 
+                 all_datasources_meta.pop(user_id_str, None)
+        else:
+            all_datasources_meta[user_id_str][dataset_id_str] = files_in_dataset # 更新されたリストを保存
     _write_datasources_meta(all_datasources_meta)
     logger.info(f"File {data_source_id} deleted from metadata for user {user_id_str}, dataset {dataset_id}")
 
@@ -529,7 +542,7 @@ async def list_documents_deprecated(
 async def query_rag_chat(
     query_request: ChatQueryRequest,
     current_user: User = Depends(auth.get_current_active_user),
-    all_user_files_by_dataset: Dict[str, Dict[str, List[DataSourceMeta]]] = Depends(get_user_datasources)
+    all_user_files_by_dataset: Dict[str, List[DataSourceMeta]] = Depends(get_user_datasources)
 ):
     user_id_str: str = str(current_user.user_id)
     selected_rag_strategy: str = query_request.rag_strategy
@@ -552,16 +565,16 @@ async def query_rag_chat(
         target_data_source_ids_for_query: List[str] = []
 
         # embedding_strategy_for_retrievalをここで決定
-        embedding_strategy_for_retrieval: str = embedding_manager.get_available_strategies()[0]
+        embedding_strategy_for_retrieval: str = cast(str, embedding_manager.get_available_strategies()[0])
 
         if query_request.data_source_ids:
             target_data_source_ids_for_query.extend(query_request.data_source_ids)
             if target_data_source_ids_for_query:
                 first_file_id_to_check: str = target_data_source_ids_for_query[0]
                 meta_found: Optional[DataSourceMeta] = None
-                # Iterate through all datasets to find the data_source_id
-                for dataset_files in all_user_files_by_dataset.values():
-                    meta_found = next((meta for meta in dataset_files.values() if meta.data_source_id == first_file_id_to_check), None)
+                # Iterate through all files in all datasets for the current user
+                for files_list in all_user_files_by_dataset.values():
+                    meta_found = next((meta for meta in files_list if meta.data_source_id == first_file_id_to_check), None)
                     if meta_found: break
                 if meta_found and meta_found.embedding_strategy_used:
                     embedding_strategy_for_retrieval = meta_found.embedding_strategy_used
@@ -588,7 +601,8 @@ async def query_rag_chat(
         else:
             # Default: Query all documents from all datasets of the user
             first_strategy_set = False
-            for dataset_files in all_user_files_by_dataset.values():                for file_meta in dataset_files.values():.values(): # ここを修正
+            for files_list in all_user_files_by_dataset.values():
+                for file_meta in files_list:
                     target_data_source_ids_for_query.append(file_meta.data_source_id)
                     if not first_strategy_set and file_meta.embedding_strategy_used:
                         embedding_strategy_for_retrieval = file_meta.embedding_strategy_used
@@ -604,5 +618,12 @@ async def query_rag_chat(
             data_source_ids=list(set(target_data_source_ids_for_query)),
             embedding_strategy_for_retrieval=embedding_strategy_for_retrieval
         )
-
-
+        return ChatQueryResponse(
+            answer=answer_data.get("answer", "No answer generated."),
+            sources=answer_data.get("source_documents", []) # source_documentsをsourcesに修正
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"An unexpected error occurred during RAG query for user {user_id_str}.")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"An unexpected error occurred during RAG query: {str(e)}")

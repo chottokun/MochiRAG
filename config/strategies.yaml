@@ -30,31 +30,35 @@ chunking_strategies:
     #     breakpoint_threshold_type: "percentile" # "standard_deviation", "interquartile" なども指定可能
 
 rag_search_strategies:
-  default: basic
+  default: simple_rag
   available:
-    - name: basic
-      type: basic # <--- Add type
-      description: "Standard vector similarity search."
-      # basic戦略に特有のデフォルトパラメータがあればここに記述 (例: n_results)
+    - name: simple_rag
+      type: simple_rag
+      description: "Standard vector similarity search (formerly basic)."
+      # simple_rag戦略に特有のデフォルトパラメータがあればここに記述 (例: n_results)
       # default_n_results: 3
-    - name: multi_query
-      type: multi_query # <--- Add type
-      description: "Generates multiple queries from the original to broaden search."
-      # default_n_results: 3
-    - name: contextual_compression
-      type: contextual_compression # <--- Add type
-      description: "Retrieves, then compresses documents to only relevant parts."
+    - name: advanced_rag
+      type: advanced_rag
+      description: "Retrieves, then compresses documents to only relevant parts (formerly contextual_compression)."
       # default_n_results: 5 # Compressorのために初期取得数を多めに設定することが多い
-    - name: parent_document
-      type: parent_document # <--- Add type
-      description: "Retrieves child chunks and returns parent documents. (Currently falls back to basic)"
-      # default_n_results: 3
     - name: deep_rag
-      type: deep_rag # <--- Add type
+      type: deep_rag
       description: "Decomposes complex queries into sub-queries for staged retrieval."
       # default_n_results_per_subquery: 3 # サブクエリごとの取得数
       # default_max_sub_queries: 3       # 最大サブクエリ数
       # query_decomposition_prompt_id: "deep_rag_decompose_default" # プロンプトテンプレートID（将来的に管理する場合）
+    - name: multi_query
+      type: multi_query
+      description: "Generates multiple queries from the original to broaden search."
+      # default_n_results: 3
+    - name: contextual_compression
+      type: contextual_compression
+      description: "Retrieves, then compresses documents to only relevant parts."
+      # default_n_results: 5 # Compressorのために初期取得数を多めに設定することが多い
+    - name: parent_document
+      type: parent_document
+      description: "Retrieves child chunks and returns parent documents. (Currently falls back to basic)"
+      # default_n_results: 3
 
 # (オプション) プロンプトテンプレートの管理セクション
 # prompt_templates:

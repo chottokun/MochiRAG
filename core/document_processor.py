@@ -1,4 +1,4 @@
-from typing import List, Literal
+from typing import List, Literal, get_args
 
 from langchain_community.document_loaders import (
     TextLoader,
@@ -29,10 +29,13 @@ text_splitter = RecursiveCharacterTextSplitter(
 
 def load_and_split_document(
     file_path: str,
-    file_type: SUPPORTED_FILE_TYPES,
+    file_type: str, # 型ヒントをstrに変更
     chunk_size: int = 1000,
     chunk_overlap: int = 200,
 ) -> List[Document]:
+    # ここでのfile_typeはstr型として受け取るが、
+    # 呼び出し元でSUPPORTED_FILE_TYPESに含まれることを保証しているため、
+    # 内部ロジックは変更しない。
     if file_type == "txt":
         loader = TextLoader(file_path, encoding="utf-8")
     elif file_type == "md":
@@ -40,7 +43,9 @@ def load_and_split_document(
     elif file_type == "pdf":
         loader = PyPDFLoader(file_path)
     else:
-        supported_types_str = ", ".join(SUPPORTED_FILE_TYPES.__args__)
+        # このelseブロックは、呼び出し元でチェックされているため、通常は到達しないはず
+        # ただし、念のため残しておく
+        supported_types_str = ", ".join(get_args(SUPPORTED_FILE_TYPES)) # get_argsを使用
         raise ValueError(
             f"Unsupported file type: '{file_type}'. Supported types are: {supported_types_str}"
         )
