@@ -67,7 +67,7 @@ class ChatQueryRequest(BaseModel):
     question: str
     data_source_ids: Optional[List[str]] = None # Specific file IDs to query
     dataset_ids: Optional[List[uuid.UUID]] = None # Specific dataset IDs to query (all files within them)
-    rag_strategy: Optional[str] = "basic" # Default to basic strategy
+    rag_strategy: Optional[str] = "simple_rag" # Default to simple_rag strategy
 
 class ChatQueryResponse(BaseModel):
     answer: str
