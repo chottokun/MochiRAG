@@ -43,6 +43,8 @@ if "selected_dataset_id" not in st.session_state:
     st.session_state.selected_dataset_id = None
 if "files_in_selected_dataset" not in st.session_state:
     st.session_state.files_in_selected_dataset = []
+if "rag_strategy_selector" not in st.session_state:
+    st.session_state.rag_strategy_selector = "simple_rag" # 初期デフォルト値
 
 # --- Common API call helper with auth error handling ---
 def api_request(method, url, **kwargs):
@@ -150,8 +152,10 @@ if st.session_state.token is None:
             username = st.text_input("Username")
             password = st.text_input("Password", type="password")
             if st.form_submit_button("Login"):
-                if not username or not password: st.warning("Please enter both username and password.")
-                else: login(username, password)
+                if not username or not password:
+                    st.warning("Please enter both username and password.")
+                else:
+                    login(username, password)
     elif auth_page_choice == "Register":
         st.session_state.page = "register"
         st.header("Register")
@@ -160,21 +164,39 @@ if st.session_state.token is None:
             reg_email = st.text_input("Email")
             reg_password = st.text_input("Password", type="password")
             if st.form_submit_button("Register"):
-                if not reg_username or not reg_email or not reg_password: st.warning("Please fill all fields.")
-                else: register(reg_username, reg_email, reg_password)
+                if not reg_username or not reg_email or not reg_password:
+                    st.warning("Please fill all fields.")
+                else:
+                    register(reg_username, reg_email, reg_password)
 else:
     st.sidebar.title("MochiRAG Menu")
-    if st.session_state.user: st.sidebar.write(f"Welcome, {st.session_state.user.get('username', 'User')}!")
+    if st.session_state.user:
+        st.sidebar.write(f"Welcome, {st.session_state.user.get('username', 'User')}!")
     st.session_state.main_app_page = st.sidebar.radio("Navigate", ["Chat", "Document Management"], key="main_nav")
-    if st.sidebar.button("Logout"): logout()
+    if st.sidebar.button("Logout"):
+        logout()
 
     if st.session_state.main_app_page == "Chat":
         st.title("Chat Page")
         st.sidebar.subheader("RAG Strategy")
+        
+        # セッションステートのrag_strategy_selectorが不正な値の場合にリセット
+        if "rag_strategy_selector" in st.session_state and \
+           st.session_state.rag_strategy_selector not in AVAILABLE_RAG_STRATEGIES:
+            st.session_state.rag_strategy_selector = AVAILABLE_RAG_STRATEGIES[0] if AVAILABLE_RAG_STRATEGIES else "simple_rag"
+            st.warning(f"Invalid RAG strategy '{st.session_state.rag_strategy_selector}' detected in session state. Resetting to default.")
+
+        # デフォルトのインデックスを決定
+        default_index = 0
+        if "simple_rag" in AVAILABLE_RAG_STRATEGIES:
+            default_index = AVAILABLE_RAG_STRATEGIES.index("simple_rag")
+        elif AVAILABLE_RAG_STRATEGIES:
+            default_index = 0 # 最初の利用可能な戦略
+
         selected_strategy = st.sidebar.selectbox(
             "Choose a RAG strategy:",
             options=AVAILABLE_RAG_STRATEGIES,
-            index=AVAILABLE_RAG_STRATEGIES.index("simple_rag") if "simple_rag" in AVAILABLE_RAG_STRATEGIES else 0,
+            index=default_index,
             key="rag_strategy_selector"
         )
         st.sidebar.caption(f"Current strategy: **{selected_strategy}**")
@@ -306,28 +328,46 @@ else:
         st.subheader("Your Datasets")
         with st.expander("Create New Dataset", expanded=False):
             with st.form("create_dataset_form", clear_on_submit=True):
-                new_ds_name = st.text_input("Dataset Name*",key="new_ds_name")
-                new_ds_desc = st.text_area("Description",key="new_ds_desc") # Optional removed from label
+                new_ds_name = st.text_input("Dataset Name*", key="new_ds_name")
+                new_ds_desc = st.text_area("Description", key="new_ds_desc")
                 if st.form_submit_button("Create Dataset"):
-                    if not new_ds_name.strip(): st.warning("Dataset Name is required.")
-                    else: create_new_dataset(new_ds_name, new_ds_desc); st.rerun()
-        if not st.session_state.datasets: get_user_datasets()
+                    if not new_ds_name.strip():
+                        st.warning("Dataset Name is required.")
+                    else:
+                        create_new_dataset(new_ds_name, new_ds_desc)
+                        st.rerun()
+        if not st.session_state.datasets:
+            get_user_datasets()
         if st.session_state.datasets:
             st.write("Available Datasets:")
-            c1,c2,c3,c4=st.columns((2,3,2,2)); c1.write("**Name**");c2.write("**Desc**");c3.write("**Manage**");c4.write("**Del**")
+            c1, c2, c3, c4 = st.columns((2, 3, 2, 2))
+            c1.write("**Name**")
+            c2.write("**Desc**")
+            c3.write("**Manage**")
+            c4.write("**Del**")
             for ds in st.session_state.datasets:
-                col1,col2,col3,col4=st.columns((2,3,2,2))
-                col1.write(ds.get("name")); col2.write(ds.get("description")or"");
-                if col3.button("Files",key=f"mng_{ds['dataset_id']}"):st.session_state.selected_dataset_id=ds["dataset_id"];st.session_state.files_in_selected_dataset=[];st.rerun()
-                if col4.button("🗑️",key=f"del_ds_{ds['dataset_id']}"):
-                    st.session_state.deleting_dataset_id = ds['dataset_id'] 
+                col1, col2, col3, col4 = st.columns((2, 3, 2, 2))
+                col1.write(ds.get("name"))
+                col2.write(ds.get("description") or "")
+                if col3.button("Files", key=f"mng_{ds['dataset_id']}"):
+                    st.session_state.selected_dataset_id = ds["dataset_id"]
+                    st.session_state.files_in_selected_dataset = []
+                    st.rerun()
+                if col4.button("🗑️", key=f"del_ds_{ds['dataset_id']}"):
+                    st.session_state.deleting_dataset_id = ds['dataset_id']
             if "deleting_dataset_id" in st.session_state and st.session_state.deleting_dataset_id:
                 ds_to_delete = next((d for d in st.session_state.datasets if d['dataset_id'] == st.session_state.deleting_dataset_id), None)
                 if ds_to_delete:
                     st.warning(f"Delete dataset '{ds_to_delete['name']}' and all its files?")
-                    if st.button("Confirm Delete",key=f"conf_del_{ds_to_delete['dataset_id']}"): delete_selected_dataset(ds_to_delete['dataset_id']); st.session_state.deleting_dataset_id=None; st.rerun()
-                    if st.button("Cancel",key=f"cancel_del_{ds_to_delete['dataset_id']}"): st.session_state.deleting_dataset_id=None; st.rerun()
-        else: st.info("No datasets yet.")
+                    if st.button("Confirm Delete", key=f"conf_del_{ds_to_delete['dataset_id']}"):
+                        delete_selected_dataset(ds_to_delete['dataset_id'])
+                        st.session_state.deleting_dataset_id = None
+                        st.rerun()
+                    if st.button("Cancel", key=f"cancel_del_{ds_to_delete['dataset_id']}"):
+                        st.session_state.deleting_dataset_id = None
+                        st.rerun()
+        else:
+            st.info("No datasets yet.")
         st.markdown("---")
 
         if st.session_state.selected_dataset_id:
@@ -354,26 +394,34 @@ else:
                     if response:
                         st.error(f"Failed to delete file:{response.status_code}-{response.text}")
                     return False
-            if not st.session_state.files_in_selected_dataset and st.session_state.selected_dataset_id:get_files()
+            if not st.session_state.files_in_selected_dataset and st.session_state.selected_dataset_id:
+                get_files()
             
             st.markdown("#### Upload New Document")
-            emb_strats=["default"]; chk_strats=["default"]
+            emb_strats = ["default"]
+            chk_strats = ["default"]
             
             current_embedding_manager = globals().get('embedding_manager')
             if current_embedding_manager is not None: 
-                try: emb_strats = current_embedding_manager.get_available_strategies()
-                except Exception as e: st.error(f"Failed to load emb strats: {e}") 
-            else: st.warning("Embedding manager not available. Using default.")
-            ul_emb_strat=st.selectbox("Emb Strat:",options=emb_strats,key="ul_emb")
+                try:
+                    emb_strats = current_embedding_manager.get_available_strategies()
+                except Exception as e:
+                    st.error(f"Failed to load emb strats: {e}") 
+            else:
+                st.warning("Embedding manager not available. Using default.")
+            ul_emb_strat = st.selectbox("Emb Strat:", options=emb_strats, key="ul_emb")
             
             current_chunking_manager = globals().get('chunking_manager')
             if current_chunking_manager is not None: 
-                try: chk_strats = current_chunking_manager.get_available_strategies()
-                except Exception as e: st.error(f"Failed to load chk strats: {e}") 
-            else: st.warning("Chunking manager not available. Using default.")
-            ul_chk_strat=st.selectbox("Chk Strat:",options=chk_strats,key="ul_chk")
-            ul_cs=st.number_input("Chunk Size",value=1000,min_value=100,step=50,key="ul_cs_val")
-            ul_co=st.number_input("Chunk Overlap",value=200,min_value=0,step=20,key="ul_co_val")
+                try:
+                    chk_strats = current_chunking_manager.get_available_strategies()
+                except Exception as e:
+                    st.error(f"Failed to load chk strats: {e}") 
+            else:
+                st.warning("Chunking manager not available. Using default.")
+            ul_chk_strat = st.selectbox("Chk Strat:", options=chk_strats, key="ul_chk")
+            ul_cs = st.number_input("Chunk Size", value=1000, min_value=100, step=50, key="ul_cs_val")
+            ul_co = st.number_input("Chunk Overlap", value=200, min_value=0, step=20, key="ul_co_val")
             with st.form("ul_file_ds_form", clear_on_submit=True):
                 uploaded_files = st.file_uploader(
                     "Upload (TXT, MD, PDF)",
@@ -420,21 +468,40 @@ else:
                         except Exception as e:
                             st.error(f"An error occurred during upload: {e}")
                         st.rerun()
-            st.markdown("---");st.markdown("#### Documents in Dataset")
-            if st.button("Refresh Files",key="ref_files"):get_files();st.rerun()
+            st.markdown("---")
+            st.markdown("#### Documents in Dataset")
+            if st.button("Refresh Files", key="ref_files"):
+                get_files()
+                st.rerun()
             if st.session_state.files_in_selected_dataset:
-                c1,c2,c3,c4=st.columns((3,2,2,1));c1.write("**File**");c2.write("**Date**");c3.write("**Chunks**");c4.write("**Del**")
+                c1, c2, c3, c4 = st.columns((3, 2, 2, 1))
+                c1.write("**File**")
+                c2.write("**Date**")
+                c3.write("**Chunks**")
+                c4.write("**Del**")
                 for fm in st.session_state.files_in_selected_dataset:
-                    fc1,fc2,fc3,fc4=st.columns((3,2,2,1));fc1.write(fm.get("original_filename"));fc2.write(fm.get("uploaded_at","").split("T")[0]);fc3.write(str(fm.get("chunk_count","-")));
-                    if fc4.button("🗑️",key=f"delf_{fm['data_source_id']}",help="Delete file"):
+                    fc1, fc2, fc3, fc4 = st.columns((3, 2, 2, 1))
+                    fc1.write(fm.get("original_filename"))
+                    fc2.write(fm.get("uploaded_at", "").split("T")[0])
+                    fc3.write(str(fm.get("chunk_count", "-")))
+                    if fc4.button("🗑️", key=f"delf_{fm['data_source_id']}", help="Delete file"):
                         st.session_state.deleting_file_id = fm['data_source_id']
                         st.session_state.deleting_file_name = fm['original_filename']
                 if "deleting_file_id" in st.session_state and st.session_state.deleting_file_id:
                     st.warning(f"Delete file '{st.session_state.deleting_file_name}'?")
-                    if st.button("Confirm Del File",key=f"conf_delf_{st.session_state.deleting_file_id}"):del_file(st.session_state.deleting_file_id);st.session_state.deleting_file_id=None;st.session_state.deleting_file_name=None;st.rerun()
-                    if st.button("Cancel Del File",key=f"cancel_delf_{st.session_state.deleting_file_id}"):st.session_state.deleting_file_id=None;st.session_state.deleting_file_name=None;st.rerun()
-            else:st.info("No docs in this dataset.")
-        else:st.info("Select dataset to manage files.")
+                    if st.button("Confirm Del File", key=f"conf_delf_{st.session_state.deleting_file_id}"):
+                        del_file(st.session_state.deleting_file_id)
+                        st.session_state.deleting_file_id = None
+                        st.session_state.deleting_file_name = None
+                        st.rerun()
+                    if st.button("Cancel Del File", key=f"cancel_delf_{st.session_state.deleting_file_id}"):
+                        st.session_state.deleting_file_id = None
+                        st.session_state.deleting_file_name = None
+                        st.rerun()
+            else:
+                st.info("No docs in this dataset.")
+        else:
+            st.info("Select dataset to manage files.")
     else: 
         st.title("Welcome")
         st.write("Select a page from the sidebar.")
