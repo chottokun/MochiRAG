@@ -1,5 +1,0 @@
-# このファイルは空です。
-# 依存関係は pyproject.toml で一元管理しています。
-# 必要に応じて pip-compile などで自動生成してください。
-# 例: pip-compile pyproject.toml
-# 詳細はREADME参照。
