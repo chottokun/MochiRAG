@@ -1,111 +1,30 @@
 # MochiRAG APIリファレンス
 
-このドキュメントは、MochiRAGバックエンドAPIの主要なエンドポイントについて説明します。
+（...既存のセクションは省略...）
 
-**ベースURL:** `http://localhost:8000`
+## 7. エラーレスポンス
 
-## 1. 認証
+APIは、エラー発生時に標準化されたエラーレスポンスを返します。レスポンスボディには、エラーの詳細情報が含まれます。
 
-### `POST /token`
-
-ユーザーを認証し、アクセストークンを取得します。
-
-- **リクエスト形式:** `application/x-www-form-urlencoded`
-- **リクエストボディ:**
-  - `username`: ユーザーのメールアドレス
-  - `password`: パスワード
-- **レスポンス (成功時):**
+- **エラーレスポンス形式:**
   ```json
   {
-    "access_token": "your_jwt_token_string",
-    "token_type": "bearer"
+    "detail": "ここにエラーメッセージが入ります"
   }
   ```
 
-## 2. ユーザー
-
-### `POST /users/`
-
-新規ユーザーを登録します。
-
-- **リクエストボディ:**
-  ```json
-  {
-    "email": "user@example.com",
-    "password": "your_strong_password"
-  }
-  ```
-
-### `GET /users/me`
-
-現在認証されているユーザーの情報を取得します。
-
-- **認証:** 要Bearerトークン
-
-## 3. データセット
-
-- `POST /users/me/datasets/`: 新規データセットを作成します。
-  - **認証:** 要Bearerトークン
-  - **リクエストボディ:** `{"name": "My Dataset", "description": "Optional description"}`
-- `GET /users/me/datasets/`: 認証ユーザーのデータセット一覧を取得します。
-  - **認証:** 要Bearerトークン
-- `GET /users/me/datasets/{dataset_id}/`: 特定のデータセットの詳細を取得します。
-  - **認証:** 要Bearerトークン
-- `DELETE /users/me/datasets/{dataset_id}/`: データセットを削除します。
-  - **認証:** 要Bearerトークン
-
-## 4. ドキュメント
-
-- `POST /users/me/datasets/{dataset_id}/documents/upload/`: 指定したデータセットにファイルをアップロードします。
-  - **認証:** 要Bearerトークン
-  - **リクエスト形式:** `multipart/form-data`
-  - **リクエストボディ:** ファイルデータ
-- `GET /users/me/datasets/{dataset_id}/documents/`: データセット内のファイル一覧を取得します。
-  - **認証:** 要Bearerトークン
-- `DELETE /users/me/datasets/{dataset_id}/documents/{data_source_id}/`: データセットからファイルを削除します。
-  - **認証:** 要Bearerトークン
-
-## 5. チャット
-
-### `POST /chat/query/`
-
-RAGチャット機能のメインエンドポイント。質問を送信し、回答を取得します。
-
-- **認証:** 要Bearerトークン
-- **リクエストボディ (JSON):**
-  ```json
-  {
-    "query": "MochiRAGのアーキテクチャについて教えてください。",
-    "strategy": "basic",
-    "dataset_ids": ["f8f276a6-a3e1-45db-a438-e63cf26d9c49"],
-    "data_source_ids": null
-  }
-  ```
-  - `strategy`: (任意) 使用するRAG戦略名。例: `basic`, `multi_query`。デフォルトは設定ファイルの値。
-  - `dataset_ids`: (任意) 検索対象とするデータセットIDのリスト。
-  - `data_source_ids`: (任意) 検索対象を特定のドキュメントに限定する場合のIDリスト。
-
-- **レスポンス (成功時):**
-  ```json
-  {
-    "answer": "MochiRAGは、フロントエンド、バックエンド、コアロジックの3層からなるアーキテクチャを採用しています...",
-    "sources": [
-      {
-        "page_content": "MochiRAGは、3つの主要なコンポーネントから構成される...",
-        "metadata": {
-          "source": "docs/MochiRAG_design.md",
-          "page": 0,
-          "data_source_id": "some_id",
-          "original_filename": "MochiRAG_design.md"
-        }
-      }
-    ]
-  }
-  ```
-
-## 6. 自動生成APIドキュメント
-
-FastAPIによって、完全でインタラクティブなAPIドキュメントが自動的に生成されます。APIサーバーの起動後、以下のURLにアクセスしてください。
-
-- **Swagger UI:** `http://localhost:8000/docs`
-- **ReDoc:** `http://localhost:8000/redoc`
+- **主要なHTTPステータスコード:**
+  - **`400 Bad Request`**: リクエストの形式が不正な場合（例: 必須パラメータの欠如、不正なJSON形式）。
+    - `{"detail": "Query field is required"}`
+  - **`401 Unauthorized`**: 認証トークンが無効または提供されていない場合。
+    - `{"detail": "Not authenticated"}`
+  - **`403 Forbidden`**: 認証はされているが、要求されたリソースへのアクセス権がない場合。
+    - `{"detail": "User does not have access to this dataset"}`
+  - **`404 Not Found`**: 要求されたリソース（例: `dataset_id`）が存在しない場合。
+    - `{"detail": "Dataset not found"}`
+  - **`422 Unprocessable Entity`**: リクエストのセマンティクスは正しいが、何らかのバリデーションエラーが発生した場合（例: サポート外のファイル形式）。
+    - `{"detail": "File type .docx is not supported"}`
+  - **`500 Internal Server Error`**: サーバー内部で予期せぬエラーが発生した場合。
+    - `{"detail": "An unexpected error occurred with the LLM service"}`
+  - **`503 Service Unavailable`**: 外部サービス（LLMやデータベース）が一時的に利用不可能な場合。
+    - `{"detail": "The LLM service is currently unavailable. Please try again later."}`

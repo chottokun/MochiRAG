@@ -2,88 +2,92 @@
 
 このガイドは、MochiRAGプロジェクトの開発環境をセットアップし、アプリケーションを実行するための手順を説明します。
 
-## 1. 前提条件
+## 1. 開発ツール
 
-開発を始める前に、以下のソフトウェアがインストールされていることを確認してください。
+本プロジェクトでは、以下のツールを組み合わせて利用します。
 
-- **Python 3.10 以上**
-- **Git**
-- **Ollama（推奨）**: ローカルでLLMを動作させるために推奨されます。`llama3`などのモデルを事前にpullしておいてください。
-  ```bash
-  ollama pull llama3
-  ```
+- **Poetry:** `pyproject.toml`に基づいた依存関係の解決と`poetry.lock`ファイルの生成を担当します。
+- **uv (推奨):** Rust製の高速なPythonパッケージインストーラー。Poetryが生成したロックファイルから、仮想環境の作成とパッケージのインストールを高速に実行します。
+- **Git:** バージョン管理システム。
+- **Ollama (推奨):** ローカルでのLLM実行環境。
 
-## 2. インストール
+## 2. セットアップ手順
 
-リポジトリをクローンし、依存関係をインストールします。
+`uv`と`Poetry`を組み合わせた、高速でモダンなセットアップ手順を推奨します。
 
-### 2.1. 自動セットアップ（推奨）
+### 2.1. 必要なツールのインストール
 
-開発用のセットアップスクリプトを使用すると、仮想環境の作成と依存関係のインストールが自動的に行われます。
+```bash
+# uvとpoetryを未インストールの場合は、pipxまたはpipでインストール
+pip install uv
+pip install poetry
+```
+
+### 2.2. プロジェクトのセットアップ
 
 ```bash
 # 1. リポジトリをクローン
 git clone <リポジトリURL>
 cd MochiRAG
 
-# 2. スクリプトに実行権限を付与
-chmod +x setup_dev.sh
+# 2. 仮想環境の作成
+# .venvという名前で仮想環境を作成します
+uv venv
 
-# 3. スクリプトを実行
-./setup_dev.sh
+# 3. 依存関係のインストール
+# poetry.lockから本番・開発・テスト用の依存関係を高速にインストールします
+uv pip sync --all
 
-# 4. 作成された仮想環境を有効化
-source venv/bin/activate
+# 4. 仮想環境の有効化
+# 以降、この仮想環境で作業します
+source .venv/bin/activate
+# Windowsの場合: .venv\Scripts\activate
 ```
 
-### 2.2. 手動セットアップ
+### 2.3. 依存関係の追加・更新
 
-手動でセットアップを行う場合は、以下の手順に従ってください。
+プロジェクトに新しいライブラリを追加する場合は、`poetry`を使用します。
 
 ```bash
-# 1. 仮想環境を作成
-python3 -m venv venv
+# 例: FastAPIをプロジェクトに追加
+poetry add fastapi
 
-# 2. 仮想環境を有効化
-source venv/bin/activate
-
-# 3. 依存関係をインストール（テスト用も含む）
-pip install --upgrade pip
-pip install ".[test]"
+# 変更をpoetry.lockに反映させた後、uvで仮想環境に同期
+uv pip sync --all
 ```
 
-## 3. 設定
+## 3. 環境設定
 
-- **環境変数:** FastAPIやStreamlit、LLMの接続情報などの設定は、プロジェクトルートの`.env`ファイルで行うことができます。（例: `OLLAMA_BASE_URL`など）
-- **RAG戦略:** 各RAG戦略や埋め込みモデルなどの設定は、`config/strategies.yaml` ファイルで管理されています。詳細はこのファイルを参照してください。
+### 3.1. 基本設定
 
-## 4. 実行方法
+プロジェクトルートに`.env`ファイルを作成し、必要な環境変数を設定します。
 
-バックエンドAPIとフロントエンドUIは、それぞれ個別に起動する必要があります。
+```
+# 例
+OLLAMA_BASE_URL=http://localhost:11434
+```
+
+### 3.2. LangSmith連携（強く推奨）
+
+開発効率を向上させるため、LangSmithとの連携を推奨します。LangSmithのサイトでAPIキーを取得し、以下の環境変数を`.env`ファイルに追記してください。
+
+```
+LANGCHAIN_TRACING_V2=true
+LANGCHAIN_API_KEY=<your-langsmith-api-key>
+# LANGCHAIN_PROJECT=<your-project-name> # (任意) プロジェクト名を指定
+```
+
+## 4. 実行とテスト
 
 ### 4.1. バックエンドAPIの起動
 
 ```bash
-# 仮想環境が有効な状態で実行
+# 有効化された仮想環境内で実行
 uvicorn backend.main:app --reload --port 8000
 ```
-APIサーバーが `http://localhost:8000` で起動します。
 
-### 4.2. フロントエンドUIの起動
-
-```bash
-# 仮想環境が有効な状態で実行
-streamlit run frontend/app.py
-```
-Webインターフェースが `http://localhost:8501` で起動します。ブラウザでこのアドレスにアクセスしてください。
-
-## 5. テストの実行
-
-プロジェクト全体のテストスイートを実行するには、以下のコマンドを使用します。
+### 4.2. テストの実行
 
 ```bash
 pytest
 ```
-
-テストのアーキテクチャやモッキング戦略に関する詳細な情報は、以下のドキュメントを参照してください。
-- [テスト戦略とモック活用ガイド](./03_Testing_Strategy_and_Mocking.md)
