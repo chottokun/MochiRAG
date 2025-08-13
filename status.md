@@ -1,44 +1,83 @@
 # MochiRAG Project Status
 
-## Date: 2025-08-12
+## Date: 2025-08-13
 
-## Summary
-This document summarizes the initial development phase of the MochiRAG project. The primary goal of this phase was to build the foundational backend infrastructure based on the project's documentation, with a strong emphasis on Test-Driven Development (TDD).
+## 1. Overall Summary
 
-## Key Accomplishments
+This document provides a detailed assessment of the MochiRAG project's current implementation status against the defined requirements. The backend has a solid foundation for core RAG functionalities, while the frontend provides a basic but incomplete user interface. Several key UI features are missing, preventing users from accessing the full capabilities of the backend.
 
-### 1. Environment and Project Setup
-- **Project Structure:** Created the full directory structure (`backend`, `core`, `config`, `tests`).
-- **Dependency Management:** Set up `pyproject.toml` using Poetry.
-- **Environment Debugging:** Successfully navigated and resolved critical environment constraints, including severe disk space limitations (`No space left on device`) by implementing a minimal dependency strategy and robust setup scripts (`setup_dev.sh`).
+---
 
-### 2. Core Logic Implementation (TDD)
-- **Configuration Manager:** Implemented `core/config_manager.py` to load and manage settings from `config/strategies.yaml`.
-- **LLM Manager:** Implemented `core/llm_manager.py` to handle the lifecycle of language models. Unit tests with 100% coverage were created and passed.
+## 2. Implementation Status by Requirement
 
-### 3. Backend API and Authentication (TDD)
-- **FastAPI Application:** Established the main FastAPI application (`backend/main.py`).
-- **Database Layer:**
-    - Set up a SQLite database connection (`backend/database.py`).
-    - Defined the `User` model using SQLAlchemy (`backend/models.py`).
-- **Security Module:**
-    - Implemented password hashing and verification using `passlib` (`backend/security.py`).
-    - Implemented JWT access token creation.
-- **CRUD Operations:** Created and tested CRUD functions for user management (`backend/crud.py`).
-- **API Endpoints:**
-    - Implemented `POST /users/` for user registration.
-    - Implemented `POST /token` for user login and token generation.
-- **Comprehensive Testing:** All backend components were developed with corresponding unit tests, covering functionality and edge cases. All 16 tests are currently passing.
+### 2.1. User Management (FR-U)
 
-## Current Status
-- The core backend skeleton is **complete and stable**.
-- User authentication and authorization are fully functional.
-- All implemented code is verified by a passing test suite.
+| ID | Requirement | Backend Status | Frontend Status | Notes |
+| --- | --- | --- | --- | --- |
+| FR-U-01 | User Registration | ✅ Implemented | ❌ **Missing** | API endpoint `POST /users/` exists, but there is no UI for registration. |
+| FR-U-02 | User Login | ✅ Implemented | ✅ Implemented | Login flow is functional. |
+| FR-U-03 | JWT Issuance | ✅ Implemented | ✅ Implemented | Token is correctly handled by the `ApiClient`. |
+| FR-U-04 | View User Info | ❔ Unknown | ❌ **Missing** | No API endpoint or UI exists for this feature. |
 
-## Deferred Items
-- **RAG-specific Features:** As per user instruction, the implementation of embedding-related features (`EmbeddingManager`, `VectorStoreManager`, `RetrieverManager`) is **on hold**. This decision was made to work around the critical disk space limitations of the execution environment, which prevented the installation of heavy dependencies like `torch` and `sentence-transformers`.
-- **Frontend:** The Streamlit frontend has not yet been started.
+### 2.2. Dataset Management (FR-DS)
 
-## Next Steps
-- The current codebase is ready for review and submission.
-- The next phase of development will focus on implementing the deferred RAG features once the environmental constraints are addressed.
+| ID | Requirement | Backend Status | Frontend Status | Notes |
+| --- | --- | --- | --- | --- |
+| FR-DS-01 | Create Dataset | ✅ Implemented | ✅ Implemented | Users can create new datasets via the sidebar. |
+| FR-DS-02 | List Datasets | ✅ Implemented | ⚠️ **Partial** | Datasets are available in a dropdown (`selectbox`), but a dedicated list view is missing. |
+| FR-DS-03 | Delete Dataset | ❔ Unknown | ❌ **Missing** | No API endpoint or UI exists for this feature. |
+
+### 2.3. Document Management (FR-D)
+
+| ID | Requirement | Backend Status | Frontend Status | Notes |
+| --- | --- | --- | --- | --- |
+| FR-D-01 | Upload Document | ✅ Implemented | ✅ Implemented | File upload to a selected dataset is functional. |
+| FR-D-02 | File Formats | ✅ Implemented | ✅ Implemented | UI restricts upload to `.txt`, `.md`, `.pdf`. |
+| FR-D-03 | Document Association | ✅ Implemented | N/A | Correctly handled by the backend. |
+| FR-D-04 | List Documents | ❔ Unknown | ❌ **Missing** | No API endpoint or UI exists for this feature. |
+| FR-D-05 | Delete Document | ❔ Unknown | ❌ **Missing** | No API endpoint or UI exists for this feature. |
+
+### 2.4. RAG Chat (FR-RAG)
+
+| ID | Requirement | Backend Status | Frontend Status | Notes |
+| --- | --- | --- | --- | --- |
+| FR-RAG-01 | Chat Interface | ✅ Implemented | ✅ Implemented | Basic chat UI is functional. |
+| FR-RAG-02 | Answer Generation | ✅ Implemented | ✅ Implemented | RAG pipeline generates answers. |
+| FR-RAG-03 | Multi-Dataset Select | ✅ Implemented | ❌ **Missing** | API supports multiple IDs, but UI only allows selecting one dataset. |
+| FR-RAG-04 | RAG Strategy Select | ✅ Implemented | ❌ **Missing** | **High Priority.** Backend supports multiple strategies, but the UI does not allow selection. This is a critical missing feature. |
+| FR-RAG-05 | Show Sources | ✅ Implemented | ✅ Implemented | Sources are displayed in an expander. |
+| FR-RAG-06 | Handle No Info | ✅ Implemented | ✅ Implemented | System returns a message when no answer is found. |
+
+### 2.5. UI/UX Requirements (FR-UI)
+
+This section tracks the newly added UI requirements.
+
+| ID | Requirement | Implementation Status | Priority |
+| --- | --- | --- | --- |
+| FR-UI-01 | Registration Page | ❌ **Not Implemented** | High |
+| FR-UI-02 | Dataset/Document List | ❌ **Not Implemented** | Medium |
+| FR-UI-03 | Delete Controls | ❌ **Not Implemented** | Medium |
+| FR-UI-04 | Multi-Dataset Chat UI | ❌ **Not Implemented** | High |
+| FR-UI-05 | RAG Strategy Chat UI | ❌ **Not Implemented** | High |
+| FR-UI-06 | User Info Page | ❌ **Not Implemented** | Low |
+
+---
+
+## 3. Non-Functional Requirements (NFR)
+
+| ID | Requirement | Status | Notes |
+| --- | --- | --- | --- |
+| NFR-MT-01 | Multi-Tenancy | ✅ Implemented | Data is filtered by `user_id` in backend queries. |
+| NFR-SEC-01 | Password Hashing | ✅ Implemented | `passlib` is used for hashing. |
+| NFR-SEC-02 | API Authentication | ✅ Implemented | FastAPI dependencies enforce token authentication. |
+| NFR-PERF-01 | Response Time | ⚠️ **Untested** | No performance benchmarks have been established. |
+| NFR-PERF-02 | Async Upload | ❌ **Not Implemented** | Uploads are currently synchronous and block the UI. Marked as a future improvement. |
+| NFR-EXT-01 | Pluggable RAG | ✅ Implemented | The `RetrieverManager` and `strategies.yaml` allow for easy addition of new strategies. |
+| NFR-EXT-02 | Pluggable Components| ✅ Implemented | Key components are managed via configuration. |
+| NFR-EXT-03 | External Config | ✅ Implemented | Settings are managed in `config/strategies.yaml`. |
+| NFR-OPS-01 | Dockerization | ❔ **Unknown** | No `Dockerfile` or `docker-compose.yml` found in the repository. |
+| NFR-OPS-02 | Dev Setup Docs | ✅ Implemented | `setup_dev.sh` and documentation exist. |
+
+## 4. Conclusion and Next Steps
+
+The project has a robust backend but is significantly hampered by a minimalistic frontend. The highest priority for the next development cycle should be to implement the missing UI components, especially **RAG Strategy Selection (FR-UI-05)** and **Multi-Dataset Selection (FR-UI-04)**, to unlock the backend's full potential.
