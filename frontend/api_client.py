@@ -12,15 +12,29 @@ class ApiClient:
             raise Exception("Not authenticated")
         return {"Authorization": f"Bearer {self.token}"}
 
+    def signup(self, email: str, password: str) -> bool:
+        try:
+            response = self.client.post(
+                f"{self.base_url}/users/",
+                json={"email": email, "password": password}
+            )
+            response.raise_for_status()
+            return True
+        except httpx.HTTPStatusError as e:
+            print(f"Signup failed: {e.response.text}")
+            return False
+
     def login(self, email: str, password: str) -> bool:
-        response = self.client.post(
-            f"{self.base_url}/token",
-            data={"username": email, "password": password}
-        )
-        if response.status_code == 200:
+        try:
+            response = self.client.post(
+                f"{self.base_url}/token",
+                data={"username": email, "password": password}
+            )
+            response.raise_for_status()
             self.token = response.json()["access_token"]
             return True
-        return False
+        except httpx.HTTPStatusError:
+            return False
 
     def get_datasets(self) -> List[Dict[str, Any]]:
         headers = self._get_auth_headers()
@@ -38,6 +52,24 @@ class ApiClient:
         response.raise_for_status()
         return response.json()
 
+    def delete_dataset(self, dataset_id: int) -> bool:
+        headers = self._get_auth_headers()
+        response = self.client.delete(
+            f"{self.base_url}/users/me/datasets/{dataset_id}/",
+            headers=headers
+        )
+        response.raise_for_status()
+        return True
+
+    def get_documents(self, dataset_id: int) -> List[Dict[str, Any]]:
+        headers = self._get_auth_headers()
+        response = self.client.get(
+            f"{self.base_url}/users/me/datasets/{dataset_id}/documents/",
+            headers=headers
+        )
+        response.raise_for_status()
+        return response.json()
+
     def upload_document(self, dataset_id: int, file) -> Dict[str, Any]:
         headers = self._get_auth_headers()
         files = {"file": (file.name, file, file.type)}
@@ -49,11 +81,31 @@ class ApiClient:
         response.raise_for_status()
         return response.json()
 
-    def query_rag(self, query: str, dataset_ids: List[int]) -> Dict[str, Any]:
+    def delete_document(self, dataset_id: int, document_id: int) -> bool:
         headers = self._get_auth_headers()
+        response = self.client.delete(
+            f"{self.base_url}/users/me/datasets/{dataset_id}/documents/{document_id}/",
+            headers=headers
+        )
+        response.raise_for_status()
+        return True
+
+    def get_rag_strategies(self) -> List[str]:
+        headers = self._get_auth_headers()
+        response = self.client.get(f"{self.base_url}/chat/strategies/", headers=headers)
+        response.raise_for_status()
+        return response.json().get("strategies", [])
+
+    def query_rag(self, query: str, dataset_ids: List[int], strategy: str) -> Dict[str, Any]:
+        headers = self._get_auth_headers()
+        payload = {
+            "query": query,
+            "dataset_ids": dataset_ids,
+            "strategy": strategy,
+        }
         response = self.client.post(
             f"{self.base_url}/chat/query/",
-            json={"query": query, "dataset_ids": dataset_ids},
+            json=payload,
             headers=headers
         )
         response.raise_for_status()
