@@ -1,0 +1,21 @@
+# MochiRAG Configuration File
+defaults:
+  llm: ollama_gemma3
+  embedding: all_minilm_l6_v2
+  rag_strategy: basic_retriever
+
+llms:
+  ollama_gemma3:
+    provider: ollama
+    model: "gemma3:4b-it-qat"
+    base_url: "http://localhost:11434"
+
+embeddings:
+  all_minilm_l6_v2:
+    provider: sentence_transformers
+    model: "all-MiniLM-L6-v2"
+
+rag_strategies:
+  basic_retriever:
+    type: basic
+    n_results: 3
