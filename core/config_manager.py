@@ -1,53 +1,65 @@
 import yaml
-from pathlib import Path
-from typing import Any, Dict
+from pydantic import BaseModel, Field
+from typing import Dict, Any
+
+# --- Pydantic Models for Configuration Validation ---
+
+class EmbeddingConfig(BaseModel):
+    provider: str
+    model_name: str
+
+class LLMConfig(BaseModel):
+    provider: str
+    model_name: str
+    base_url: str
+
+class RetrieverStrategyConfig(BaseModel):
+    strategy_class: str
+    description: str
+    parameters: Dict[str, Any]
+
+class AppConfig(BaseModel):
+    embeddings: Dict[str, EmbeddingConfig]
+    llms: Dict[str, LLMConfig]
+    retrievers: Dict[str, RetrieverStrategyConfig]
+
+# --- ConfigManager Singleton ---
 
 class ConfigManager:
-    """
-    A manager class to handle loading and accessing configuration from a YAML file.
-    """
     _instance = None
-    _config: Dict[str, Any] = {}
 
-    def __new__(cls, config_path: Path = Path("config/strategies.yaml")):
-        if cls._instance is None:
+    def __new__(cls, *args, **kwargs):
+        if not cls._instance:
             cls._instance = super(ConfigManager, cls).__new__(cls)
-            # In a real scenario, you might want to handle re-instantiation differently
-            # but for this singleton-like pattern, we load once.
-            cls._instance._load_config(config_path)
         return cls._instance
 
-    def _load_config(self, config_path: Path):
-        """Loads the YAML configuration file."""
-        if not config_path.is_file():
-            # This is a critical error, the application can't run without its config.
-            raise FileNotFoundError(f"Configuration file not found at: {config_path}")
-        with open(config_path, "r") as f:
-            self._config = yaml.safe_load(f)
+    def __init__(self, config_path: str = "config/strategies.yaml"):
+        # The check prevents re-initialization on subsequent calls
+        if not hasattr(self, 'is_initialized'):
+            with open(config_path, 'r') as f:
+                yaml_data = yaml.safe_load(f)
+            self.config = AppConfig(**yaml_data)
+            self.is_initialized = True
+    def get_default_llm_name(self) -> str:
+        if not self.config.llms:
+            raise ValueError("No LLM configurations found in strategies.yaml")
+        return next(iter(self.config.llms))
 
-    @property
-    def defaults(self) -> Dict[str, str]:
-        """Returns the default settings."""
-        return self._config.get("defaults", {})
 
-    @property
-    def llms(self) -> Dict[str, Any]:
-        """Returns the LLM configurations."""
-        return self._config.get("llms", {})
+    def get_llm_config(self, name: str) -> LLMConfig:
+        if name not in self.config.llms:
+            raise ValueError(f"LLM configuration '{name}' not found in strategies.yaml")
+        return self.config.llms[name]
 
-    def get_llm_config(self, name: str = None) -> Dict[str, Any]:
-        """
-        Returns the configuration for a specific LLM.
-        If no name is provided, it returns the default LLM config.
-        """
-        if name is None:
-            name = self.defaults.get("llm")
-        if not name:
-             raise ValueError("Default LLM name not found in config.")
-        config = self.llms.get(name)
-        if config is None:
-            raise ValueError(f"LLM configuration '{name}' not found.")
-        return config
+    def get_embedding_config(self, name: str) -> EmbeddingConfig:
+        if name not in self.config.embeddings:
+            raise ValueError(f"Embedding configuration '{name}' not found in strategies.yaml")
+        return self.config.embeddings[name]
 
-# Create a default instance for easy import across the application
+    def get_retriever_config(self, name: str) -> RetrieverStrategyConfig:
+        if name not in self.config.retrievers:
+            raise ValueError(f"Retriever configuration '{name}' not found in strategies.yaml")
+        return self.config.retrievers[name]
+
+# Create a single, globally accessible instance of the ConfigManager
 config_manager = ConfigManager()

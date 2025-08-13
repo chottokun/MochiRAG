@@ -1,21 +1,25 @@
-# MochiRAG Configuration File
-defaults:
-  llm: ollama_gemma3
-  embedding: all_minilm_l6_v2
-  rag_strategy: basic_retriever
+# Configuration for MochiRAG models and strategies
 
+# Embedding models configuration
+embeddings:
+  # Default model for embedding text. Excellent performance for its size.
+  all-MiniLM-L6-v2:
+    provider: huggingface # Indicates it's a SentenceTransformer model
+    model_name: "all-MiniLM-L6-v2"
+
+# Large Language Models (LLM) configuration
 llms:
-  ollama_gemma3:
+  # Default LLM for chat and other tasks. Using a small, fast Gemma model.
+  gemma3:4b-it-qat:
     provider: ollama
-    model: "gemma3:4b-it-qat"
+    model_name: "gemma3:4b-it-qat" # Using a standard name, as gemma3:4b-it-qat might be custom
     base_url: "http://localhost:11434"
 
-embeddings:
-  all_minilm_l6_v2:
-    provider: sentence_transformers
-    model: "all-MiniLM-L6-v2"
-
-rag_strategies:
-  basic_retriever:
-    type: basic
-    n_results: 3
+# Retriever strategies configuration
+retrievers:
+  # Configuration for the basic semantic search
+  basic:
+    strategy_class: "BasicRetrieverStrategy"
+    description: "A standard vector similarity search."
+    parameters:
+      k: 5 # Number of documents to retrieve

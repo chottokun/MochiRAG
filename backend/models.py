@@ -1,4 +1,5 @@
-from sqlalchemy import Boolean, Column, Integer, String
+import datetime
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 
 from .database import Base
@@ -9,7 +10,33 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
-    is_active = Column(Boolean, default=True)
 
-    # In the future, we can link users to their datasets, etc.
-    # datasets = relationship("Dataset", back_populates="owner")
+    datasets = relationship("Dataset", back_populates="owner", cascade="all, delete-orphan")
+    data_sources = relationship("DataSource", back_populates="owner", cascade="all, delete-orphan")
+
+class Dataset(Base):
+    __tablename__ = "datasets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True, nullable=False)
+    description = Column(String, nullable=True)
+    
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    owner = relationship("User", back_populates="datasets")
+    
+    data_sources = relationship("DataSource", back_populates="dataset", cascade="all, delete-orphan")
+
+class DataSource(Base):
+    __tablename__ = "data_sources"
+
+    id = Column(Integer, primary_key=True, index=True)
+    original_filename = Column(String, nullable=False)
+    file_path = Column(String, nullable=False, unique=True)
+    file_type = Column(String, nullable=False)
+    upload_date = Column(DateTime, default=datetime.datetime.utcnow)
+
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    owner = relationship("User", back_populates="data_sources")
+
+    dataset_id = Column(Integer, ForeignKey("datasets.id"), nullable=False)
+    dataset = relationship("Dataset", back_populates="data_sources")
