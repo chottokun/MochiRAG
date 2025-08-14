@@ -75,10 +75,6 @@ def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Email already registered")
     return crud.create_user(db=db, user=user)
 
-@app.get("/users/me", response_model=schemas.User)
-def read_users_me(current_user: models.User = Depends(get_current_user)):
-    return current_user
-
 @app.post("/users/me/datasets/", response_model=schemas.Dataset, status_code=status.HTTP_201_CREATED)
 def create_dataset_for_user(dataset: schemas.DatasetCreate, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
     return crud.create_dataset(db=db, dataset=dataset, owner_id=current_user.id)
@@ -135,6 +131,48 @@ def upload_document_to_dataset(
             os.remove(file_path)
 
     return db_data_source
+
+@app.get("/users/me/datasets/{dataset_id}/documents/", response_model=List[schemas.DataSource])
+def read_documents_for_dataset(
+    dataset_id: int,
+    skip: int = 0,
+    limit: int = 100,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    # crud.get_data_sources_by_dataset will internally verify that the user owns the dataset
+    return crud.get_data_sources_by_dataset(db, dataset_id=dataset_id, owner_id=current_user.id, skip=skip, limit=limit)
+
+@app.delete("/users/me/datasets/{dataset_id}/documents/{document_id}", response_model=schemas.DataSource)
+def delete_document_from_dataset(
+    dataset_id: int,
+    document_id: int,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    # 1. Verify user owns the dataset
+    dataset = crud.get_dataset(db, dataset_id=dataset_id, owner_id=current_user.id)
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found or access denied")
+
+    # 2. Verify the document exists and belongs to the specified dataset
+    doc_to_delete = crud.get_data_source(db, data_source_id=document_id, owner_id=current_user.id)
+    if not doc_to_delete or doc_to_delete.dataset_id != dataset_id:
+        raise HTTPException(status_code=404, detail="Document not found in this dataset")
+
+    # 3. Delete the document
+    deleted_doc = crud.delete_data_source(db, data_source_id=document_id, owner_id=current_user.id)
+    if not deleted_doc:
+        # This case should ideally not be reached if the above checks pass
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    return deleted_doc
+
+@app.get("/chat/strategies/")
+def get_available_rag_strategies():
+    """Returns a list of available RAG strategies from the retriever manager."""
+    from core.retriever_manager import retriever_manager
+    return {"strategies": list(retriever_manager.strategies.keys())}
 
 @app.post("/chat/query/", response_model=schemas.QueryResponse)
 def query_rag_chain(
