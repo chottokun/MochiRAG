@@ -1,5 +1,17 @@
 import streamlit as st
 
+def handle_file_upload(dataset_id: int, uploader_key: str):
+    """Callback function to handle file uploads."""
+    uploaded_file = st.session_state.get(uploader_key)
+    if uploaded_file:
+        with st.spinner("Processing file..."):
+            try:
+                st.session_state.api_client.upload_document(dataset_id, uploaded_file)
+                st.success("File uploaded!")
+                # No st.rerun() here, the state change of the widget handles it.
+            except Exception as e:
+                st.error(f"Upload failed: {e}")
+
 def render_data_management():
     st.sidebar.header("Data Management")
 
@@ -19,6 +31,7 @@ def render_data_management():
 
     # --- Dataset and Document Listing ---
     try:
+        # Note: This could be cached for better performance
         st.session_state.datasets = st.session_state.api_client.get_datasets()
     except Exception as e:
         st.sidebar.error(f"Failed to fetch datasets: {e}")
@@ -32,20 +45,15 @@ def render_data_management():
         with st.sidebar.expander(dataset['name']):
             st.write(f"_{dataset.get('description', 'No description')}_")
 
-            # --- Document Upload ---
-            uploaded_file = st.file_uploader(
+            # --- Document Upload (using callback) ---
+            uploader_key = f"upload_{dataset['id']}"
+            st.file_uploader(
                 f"Upload to '{dataset['name']}'",
                 type=["txt", "md", "pdf"],
-                key=f"upload_{dataset['id']}"
+                key=uploader_key,
+                on_change=handle_file_upload,
+                args=(dataset['id'], uploader_key)
             )
-            if uploaded_file:
-                with st.spinner("Processing file..."):
-                    try:
-                        st.session_state.api_client.upload_document(dataset['id'], uploaded_file)
-                        st.success("File uploaded!")
-                        st.rerun() # Refresh to show new document
-                    except Exception as e:
-                        st.error(f"Upload failed: {e}")
 
             # --- Document List ---
             try:

@@ -55,7 +55,7 @@ class ApiClient:
     def delete_dataset(self, dataset_id: int) -> bool:
         headers = self._get_auth_headers()
         response = self.client.delete(
-            f"{self.base_url}/users/me/datasets/{dataset_id}/",
+            f"{self.base_url}/users/me/datasets/{dataset_id}",
             headers=headers
         )
         response.raise_for_status()
@@ -84,7 +84,7 @@ class ApiClient:
     def delete_document(self, dataset_id: int, document_id: int) -> bool:
         headers = self._get_auth_headers()
         response = self.client.delete(
-            f"{self.base_url}/users/me/datasets/{dataset_id}/documents/{document_id}/",
+            f"{self.base_url}/users/me/datasets/{dataset_id}/documents/{document_id}",
             headers=headers
         )
         response.raise_for_status()
