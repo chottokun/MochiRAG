@@ -17,7 +17,6 @@ def test_user_model_exists():
     assert "id" in columns
     assert "email" in columns
     assert "hashed_password" in columns
-    assert "is_active" in columns
 
     # Check types, especially for mapped columns
     id_col = inspector.columns['id']

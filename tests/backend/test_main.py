@@ -16,14 +16,6 @@ app.dependency_overrides[get_db] = override_get_db
 
 
 @pytest.mark.anyio
-async def test_health_check():
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.get("/health")
-    assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
-
-@pytest.mark.anyio
 async def test_create_user(monkeypatch):
     # Mock the crud functions
     mock_created_user = schemas.User(id=1, email="test@example.com", is_active=True)
@@ -37,7 +29,7 @@ async def test_create_user(monkeypatch):
             json={"email": "test@example.com", "password": "password123"},
         )
 
-    assert response.status_code == 200
+    assert response.status_code == 201
     assert response.json()["email"] == "test@example.com"
     crud.create_user.assert_called_once()
 

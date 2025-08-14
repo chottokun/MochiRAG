@@ -7,7 +7,7 @@ def clear_llm_manager_cache():
     """A fixture to automatically clear the LLMManager cache before each test."""
     # We must import here to avoid circular dependency issues at module load time
     from core.llm_manager import LLMManager
-    LLMManager._instances.clear()
+    LLMManager._llms.clear()
 
 
 # --- Mock Configuration ---
