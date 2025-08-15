@@ -70,11 +70,17 @@ class ApiClient:
         response.raise_for_status()
         return response.json()
 
-    def upload_documents(self, dataset_id: int, files: List[Any]) -> List[Dict[str, Any]]:
+    def upload_documents(self, dataset_id: int, files: List[Any], strategy: str = "basic") -> List[Dict[str, Any]]:
         headers = self._get_auth_headers()
         file_list = [("files", (file.name, file, file.type)) for file in files]
+        
+        if strategy == "parent_document":
+            endpoint = f"{self.base_url}/users/me/datasets/{dataset_id}/documents/upload_for_parent_document/"
+        else:
+            endpoint = f"{self.base_url}/users/me/datasets/{dataset_id}/documents/upload_batch/"
+
         response = self.client.post(
-            f"{self.base_url}/users/me/datasets/{dataset_id}/documents/upload_batch/",
+            endpoint,
             files=file_list,
             headers=headers
         )

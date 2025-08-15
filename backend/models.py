@@ -40,3 +40,14 @@ class DataSource(Base):
 
     dataset_id = Column(Integer, ForeignKey("datasets.id"), nullable=False)
     dataset = relationship("Dataset", back_populates="data_sources")
+
+    parent_documents = relationship("ParentDocument", back_populates="data_source", cascade="all, delete-orphan")
+
+class ParentDocument(Base):
+    __tablename__ = "parent_documents"
+
+    id = Column(String, primary_key=True, index=True)
+    content = Column(String, nullable=False)
+    data_source_id = Column(Integer, ForeignKey("data_sources.id"), nullable=False)
+    
+    data_source = relationship("DataSource", back_populates="parent_documents")

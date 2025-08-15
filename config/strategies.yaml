@@ -24,3 +24,21 @@ retrievers:
     description: "A standard vector similarity search."
     parameters:
       k: 5 # Number of documents to retrieve
+  multiquery:
+    strategy_class: "MultiQueryRetrieverStrategy"
+    description: "Generates multiple queries from different perspectives for a given user question."
+    parameters: {}
+  compression:
+    strategy_class: "ContextualCompressionRetrieverStrategy"
+    description: "Compresses retrieved documents to extract only the relevant information."
+    parameters: {}
+  parent_document:
+    strategy_class: "ParentDocumentRetrieverStrategy"
+    description: "Retrieves smaller chunks of documents and returns the parent document."
+    parameters:
+      parent_chunk_size: 2000
+      child_chunk_size: 400
+  deeprag:
+    strategy_class: "DeepRAGStrategy"
+    description: "Decomposes complex questions into a series of simpler subqueries to build a comprehensive answer."
+    parameters: {}

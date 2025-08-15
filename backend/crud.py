@@ -1,4 +1,5 @@
 from sqlalchemy.orm import Session
+from typing import List
 
 from . import models, schemas, security
 
@@ -78,3 +79,18 @@ def delete_data_source(db: Session, data_source_id: int, owner_id: int):
 
 def get_data_source_by_file_path(db: Session, file_path: str):
     return db.query(models.DataSource).filter(models.DataSource.file_path == file_path).first()
+
+# --- ParentDocument CRUD ---
+
+def create_parent_document(db: Session, doc_id: str, content: str, data_source_id: int):
+    db_doc = models.ParentDocument(id=doc_id, content=content, data_source_id=data_source_id)
+    db.add(db_doc)
+    db.commit()
+    db.refresh(db_doc)
+    return db_doc
+
+def get_parent_document(db: Session, doc_id: str):
+    return db.query(models.ParentDocument).filter(models.ParentDocument.id == doc_id).first()
+
+def mget_parent_documents(db: Session, doc_ids: List[str]):
+    return db.query(models.ParentDocument).filter(models.ParentDocument.id.in_(doc_ids)).all()

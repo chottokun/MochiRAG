@@ -1,15 +1,14 @@
 import streamlit as st
 
-def handle_file_uploads(dataset_id: int, uploader_key: str):
-    """Callback function to handle multiple file uploads."""
+def handle_file_uploads(dataset_id: int, uploader_key: str, strategy: str):
+    """Callback function to handle multiple file uploads with a specific strategy."""
     uploaded_files = st.session_state.get(uploader_key)
     if uploaded_files:
-        with st.spinner(f"Processing {len(uploaded_files)} file(s)..."):
+        with st.spinner(f"Processing {len(uploaded_files)} file(s) with '{strategy}' strategy..."):
             try:
-                st.session_state.api_client.upload_documents(dataset_id, uploaded_files)
+                # We'll need a new method in the api_client to handle strategy
+                st.session_state.api_client.upload_documents(dataset_id, uploaded_files, strategy)
                 st.success("File(s) uploaded successfully!")
-                # To prevent re-triggering, we might need to clear the uploader state
-                # st.session_state[uploader_key] = [] # This can be tricky with Streamlit's state
             except Exception as e:
                 st.error(f"Upload failed: {e}")
 
@@ -32,7 +31,6 @@ def render_data_management():
 
     # --- Dataset and Document Listing ---
     try:
-        # Note: This could be cached for better performance
         st.session_state.datasets = st.session_state.api_client.get_datasets()
     except Exception as e:
         st.sidebar.error(f"Failed to fetch datasets: {e}")
@@ -46,6 +44,13 @@ def render_data_management():
         with st.sidebar.expander(dataset['name']):
             st.write(f"_{dataset.get('description', 'No description')}_")
 
+            # --- Ingestion Strategy Selection ---
+            ingestion_strategy = st.selectbox(
+                "Select Ingestion Strategy",
+                options=["basic", "parent_document"],
+                key=f"ingestion_strategy_{dataset['id']}"
+            )
+
             # --- Document Upload (using callback) ---
             uploader_key = f"upload_{dataset['id']}"
             st.file_uploader(
@@ -53,7 +58,7 @@ def render_data_management():
                 type=["txt", "md", "pdf"],
                 key=uploader_key,
                 on_change=handle_file_uploads,
-                args=(dataset['id'], uploader_key),
+                args=(dataset['id'], uploader_key, ingestion_strategy),
                 accept_multiple_files=True
             )
 

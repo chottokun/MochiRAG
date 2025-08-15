@@ -24,6 +24,10 @@ def render_chat_settings():
             st.session_state.selected_dataset_names = selected_dataset_names
             st.session_state.selected_dataset_ids = [dataset_options[name] for name in selected_dataset_names]
         with col2:
+            # Add 'deeprag' to the list of strategies if it's not already there
+            if 'deeprag' not in st.session_state.rag_strategies:
+                st.session_state.rag_strategies.append('deeprag')
+            
             selected_strategy = st.selectbox(
                 "Select RAG Strategy",
                 options=st.session_state.rag_strategies,
@@ -40,9 +44,18 @@ def render_chat():
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
             if "sources" in message and message["sources"]:
-                with st.expander("Sources"):
-                    for source in message["sources"]:
-                        st.info(f"**Source:** `{source.get('metadata', {}).get('original_filename', 'N/A')}`\n\n---\n{source.get('page_content', '')}")
+                # Check if this is a DeepRAG trace
+                is_deep_rag_trace = message.get("strategy") == 'deeprag'
+                
+                expander_title = "Trace Steps" if is_deep_rag_trace else "Sources"
+                with st.expander(expander_title):
+                    if is_deep_rag_trace:
+                        for idx, step in enumerate(message["sources"], 1):
+                            st.markdown(f"**Step {idx}**")
+                            st.json(step.get('metadata', {}).get('step', {}))
+                    else:
+                        for source in message["sources"]:
+                            st.info(f"**Source:** `{source.get('metadata', {}).get('original_filename', 'N/A')}`\n\n---\n{source.get('page_content', '')}")
 
     # Render chat settings before the input
     render_chat_settings()
@@ -62,7 +75,7 @@ def render_chat():
                     dataset_ids = st.session_state.get("selected_dataset_ids")
                     strategy = st.session_state.get("selected_strategy")
 
-                    if not dataset_ids:
+                    if not dataset_ids and strategy != 'deeprag': # deeprag might not need a dataset
                         st.warning("Please select at least one dataset in 'Chat Settings'.")
                         st.session_state.messages.pop() # Remove user prompt
                         return
@@ -76,8 +89,7 @@ def render_chat():
                     sources = response.get("sources", [])
                     
                     st.markdown(answer)
-                    st.session_state.messages.append({"role": "assistant", "content": answer, "sources": sources})
-                    # Use st.experimental_rerun() for older Streamlit, st.rerun() is fine for newer versions
+                    st.session_state.messages.append({"role": "assistant", "content": answer, "sources": sources, "strategy": strategy})
                     st.rerun()
 
                 except Exception as e:
