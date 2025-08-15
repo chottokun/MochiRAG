@@ -6,7 +6,15 @@ from passlib.context import CryptContext
 
 # --- Configuration ---
 # In a real application, these should be loaded from a config file or environment variables.
-SECRET_KEY = "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7"
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# In a real application, these should be loaded from a config file or environment variables.
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    raise ValueError("No SECRET_KEY set for JWT signing. Please set it in your environment variables.")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
