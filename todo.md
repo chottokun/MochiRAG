@@ -64,3 +64,27 @@ class VectorStoreManager:
 # Create a single, globally accessible instance
 vector_store_manager = VectorStoreManager()
 ```
+
+----
+backend/main.py
+
+This manager is missing a method to delete documents from the vector store, which is a critical part of the data lifecycle. As noted in todo.md, this is required by the delete_document API endpoint to prevent orphaned data in ChromaDB when a document's metadata is deleted from the main database.
+
+Please add a delete_documents method to this class. It should accept a collection name and filter criteria to identify and remove the correct vectors.
+
+```python
+    def delete_documents(self, collection_name: str, filter_criteria: dict):
+        """Delete documents from a specific collection based on metadata filter."""
+        vector_store = self.get_vector_store(collection_name)
+        try:
+            # Use the 'get' method to find document IDs matching the filter
+            ids_to_delete = vector_store.get(where=filter_criteria, include=[])['ids']
+            if ids_to_delete:
+                vector_store.delete(ids=ids_to_delete)
+                print(f"Deleted {len(ids_to_delete)} vectors from collection '{collection_name}'.")
+            else:
+                print(f"No vectors found to delete in '{collection_name}' with filter: {filter_criteria}")
+        except Exception as e:
+            print(f"Error deleting documents from '{collection_name}': {e}")
+            raise
+```
