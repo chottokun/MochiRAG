@@ -4,14 +4,15 @@
 embeddings:
   # Default model for embedding text. Excellent performance for its size.
   all-MiniLM-L6-v2:
-    provider: huggingface # Indicates it's a SentenceTransformer model
-    model_name: "all-MiniLM-L6-v2"
+    provider: ollama # Indicates it's a SentenceTransformer model
+    model_name: "mahonzhan/all-MiniLM-L6-v2:latest"
+    base_url: "http://localhost:11434"
 
 # Large Language Models (LLM) configuration
 llms:
   # Default LLM for chat and other tasks. Using a small, fast Gemma model.
   gemma3:4b-it-qat:
-    provider: ollama
+    provider: ollama  
     model_name: "gemma3:4b-it-qat" # Using a standard name, as gemma3:4b-it-qat might be custom
     base_url: "http://localhost:11434"
 
