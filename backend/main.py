@@ -103,7 +103,8 @@ def upload_document_to_dataset(
 
     upload_dir = "temp_uploads"
     os.makedirs(upload_dir, exist_ok=True)
-    file_path = os.path.join(upload_dir, file.filename)
+    unique_filename = f"{uuid4()}_{file.filename}"
+    file_path = os.path.join(upload_dir, unique_filename)
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
@@ -148,7 +149,8 @@ def upload_documents_to_dataset(
     
     data_sources = []
     for file in files:
-        file_path = os.path.join(upload_dir, file.filename)
+        unique_filename = f"{uuid4()}_{file.filename}"
+        file_path = os.path.join(upload_dir, unique_filename)
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
@@ -194,7 +196,8 @@ def upload_documents_for_parent_document_retriever(
     
     data_sources = []
     for file in files:
-        file_path = os.path.join(upload_dir, file.filename)
+        unique_filename = f"{uuid4()}_{file.filename}"
+        file_path = os.path.join(upload_dir, unique_filename)
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
