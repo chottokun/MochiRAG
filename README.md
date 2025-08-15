@@ -1,208 +1,123 @@
-# MochiRAG プロジェクトへようこそ
+# MochiRAG
 
-MochiRAG は、個人のドキュメントに基づいて AI と対話できる Retrieval-Augmented Generation (RAG) システムです。ユーザーは自身のドキュメントをアップロードし、お好きな RAG 戦略を選択して、どのような回答が得られるかお試しすることができます。  
+MochiRAG is a multi-tenant, Retrieval-Augmented Generation (RAG) application that allows users to upload their own documents and interact with an AI to get answers based on the provided content.
 
-まだ、実装途中のものがたくさんあります。
+This application features a Python backend built with FastAPI and a reactive frontend built with Streamlit.
 
----
+## ✨ Features
 
-## 1. プロジェクト概要
+- **Secure Multi-Tenancy**: User data is completely isolated. A user can only access the documents and datasets they own.
+- **User Authentication**: Secure sign-up and login functionality.
+- **Dataset Management**: Create and delete datasets to organize documents.
+- **Document Management**: Upload documents (`.txt`, `.md`, `.pdf`) to specific datasets and delete them.
+- **RAG Chat Interface**:
+    - Ask questions in natural language.
+    - Select one or more datasets to query against.
+    - Choose from various RAG strategies for retrieval (see "RAG Strategies" section below).
+    - View the sources used by the LLM to generate an answer.
 
-- **目的**: ユーザー単位でドキュメントを分離管理し、安全かつ信頼性の高い AI 応答を実現  
-- **RAG 戦略**:  
-  - 実装済み: `basic`、`parent_document` (現在は basic と同等)、`multi_query`、`contextual_compression`
-  - 設定: [`config/strategies.yaml`](config/strategies.yaml) を参照  
-- **主な機能**  
-  - ユーザー認証 (FastAPI OAuth2/JWT)  
-  - ドキュメント管理 (TXT/MD/PDF のアップロード、メタデータ管理)  
-  - RAG チャット (LangChain + Ollama llama3)  
-  - データ分離 (ユーザーごとのベクトル DB 分離)
+### RAG Strategies
 
----
+MochiRAG supports multiple RAG (Retrieval-Augmented Generation) strategies, allowing users to experiment with different retrieval approaches. You can select your preferred strategy in the chat interface settings.
 
-## 2. 技術スタック
+- **Basic (Vector Search)**: A standard semantic search based on vector similarity. Documents are split into chunks, embedded, and stored in a vector database. Retrieval involves finding the `k` most similar chunks to the query.
+- **Multi-Query Retriever**: Generates multiple variations of the user's question to retrieve a broader set of relevant documents, helping to overcome the limitations of single-query similarity search.
+- **Contextual Compression Retriever**: Retrieves a larger set of documents and then uses an LLM to compress and extract only the most relevant information from those documents, reducing noise.
+- **Parent Document Retriever**: Stores smaller, highly relevant "child" chunks in the vector database, but retrieves and provides the larger "parent" document to the LLM for context. This helps maintain context while still leveraging precise retrieval.
+- **DeepRAG**: A multi-step reasoning strategy that decomposes complex questions into simpler subqueries. It iteratively retrieves information for each subquery and synthesizes the intermediate answers to form a comprehensive final response. The reasoning trace is visible in the UI.
 
-- バックエンド: Python + FastAPI  
-- フロントエンド: Python + Streamlit  
-- RAG・LLM: LangChain, Ollama (llama3 モデル)  
-- ベクトルストア: ChromaDB (永続化)  
-- エンベディング: Sentence Transformers (`all-MiniLM-L6-v2`)  
-- テスト: pytest  
+## 🚀 Getting Started
 
----
+### Prerequisites
 
-## 3. 機能一覧
+- Python 3.10+
+- [Poetry](https://python-poetry.org/) for dependency management (recommended).
+- [uv](https://astral.sh/uv) as an alternative dependency installer.
+- An Ollama instance running with a model (e.g., `gemma3:4b-it-qat`). For installation and usage, refer to the [Ollama documentation](https://ollama.com/). You can pull a model using `ollama pull gemma3:4b-it-qat`. The LLM can be configured in `config/strategies.yaml`.
 
-1. **ユーザー認証**  
-   - メール／パスワード登録、JWT トークン発行  
-   - パスワードはハッシュ化保存  
-2. **ドキュメント管理**  
-   - TXT, MD, PDF のアップロード・一覧表示  
-   - アップロード履歴・メタデータ管理  
-3. **RAG チャット**  
-   - 自然言語クエリに基づく応答生成  
-   - 戦略選択: `basic`, `parent_document`, `multi_query`, `contextual_compression`  
-   - 回答の根拠となった参照元ドキュメントの情報をオプションで表示（ファイル名、ページ番号、内容の断片など）
-   - チャット時に特定のデータセットを検索対象として指定可能
-4. **データセット管理**
-   - ユーザーは複数のデータセットを作成し、ドキュメントを整理可能
-   - データセットの作成、一覧表示、削除
-   - 各データセットへのファイルのアップロード、ファイル一覧表示、ファイル削除
-5. **データ分離・セキュリティ**
-   - ユーザー毎に ChromaDB を分離  
-   - 認証ユーザーのみ自身のデータアクセス可能  
+### 1. Setup
 
----
-
-## 4. 依存関係とセットアップ
-
-### 4.1 前提条件
-
-- Python 3.10 以上  
-- （任意）Ollama が動作し、例えば`llama3` モデルが動作可能な状況であること。
-
-### 4.2 インストール
-
-#### 自動セットアップ 
+Clone the repository and install the required dependencies.
 
 ```bash
-git clone <リポジトリURL>
+git clone <repository-url>
 cd MochiRAG
-
-# 開発用スクリプトで仮想環境＆依存関係インストール
-chmod +x setup_dev.sh
-./setup_dev.sh
-
-# 仮想環境をアクティベート
-source venv/bin/activate
 ```
 
-#### 手動セットアップ
+**Using Poetry (Recommended):**
 
 ```bash
-# 仮想環境の作成・有効化
-python3 -m venv venv
-source venv/bin/activate
-
-# プロジェクト依存のインストール
-pip install --upgrade pip
-pip install ".[test]"
+poetry install
 ```
 
-### 4.3 設定
+**Using uv (Alternative):**
 
-- 環境変数: `.env` を利用可（FastAPI, Streamlit 設定）  
-- RAG 戦略: `config/strategies.yaml` で詳細設定  
-
----
-
-## 5. 実行方法
-
-uv を使うとより簡便に起動できます。
-
-### 5.1 バックエンド API 起動
+First, install `uv` if you haven't already:
 
 ```bash
-# 仮想環境内で
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+Then, install the project dependencies:
+
+```bash
+uv pip install -e .
+```
+
+**Note on Dependencies:** The project dependencies, especially PyTorch and CUDA packages, require a significant amount of disk space (>10 GB). Please ensure you have sufficient space before installation.
+
+### 2. Running the Application
+
+The application consists of two main components: the backend server and the frontend UI. You need to run both in separate terminal sessions.
+
+**Running the Backend:**
+
+The backend is a FastAPI application. Run it using `uvicorn`.
+
+```bash
 uvicorn backend.main:app --reload --port 8000
 ```
+The backend server will be available at `http://localhost:8000`.
 
-### 5.2 フロントエンド UI 起動
+**Running the Frontend:**
 
-```bash
-# 仮想環境内で
-uv run streamlit run frontend/app.py
-```
-
-ブラウザで `http://localhost:8501` を開いて操作してください。
-
----
-
-## 6. 使用例
-
-### 6.1 cURL からの RAG クエリ
+The frontend is a Streamlit application.
 
 ```bash
-curl -X POST http://localhost:8000/chat/query/ \
-  -H "Authorization: Bearer <TOKEN>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "MochiRAG のアーキテクチャを教えて",
-    "strategy": "basic"
-  }'
+streamlit run frontend/app.py
 ```
+The frontend will be available at `http://localhost:8501`. Open this URL in your browser to use the application.
 
-### 6.2 Python スニペット
+## 🧪 Running Tests
 
-```python
-import requests
+The test suite is built with `pytest` and is designed to run without any external service dependencies (it uses an in-memory SQLite database and mocks for API tests).
 
-token = "<YOUR_JWT_TOKEN>"
-url = "http://localhost:8000/chat/query/"
-data = {"query": "ドキュメント管理機能は？", "strategy": "multi_query"}
-
-resp = requests.post(url, json=data, headers={"Authorization": f"Bearer {token}"})
-print(resp.json())
-```
-
----
-
-## 7. テストとコントリビューション
-
-### 7.1 テスト
+To run the tests, execute the following command from the root of the project directory:
 
 ```bash
-# 全テスト実行
-pytest -q --disable-warnings --maxfail=1
+pytest
 ```
 
-詳細は [`testing_guide.md`](testing_guide.md) を参照。
+This will discover and run all tests in the `tests/` directory.
 
----
+## 📂 Project Structure
 
-## 8. ディレクトリ構造
+- `backend/`: FastAPI application for API endpoints, authentication, and data management.
+- `core/`: Core logic for RAG functionalities, including LLM interaction, embedding, retrieval, and vector store management.
+- `frontend/`: Streamlit application for the user interface.
+- `config/`: Configuration files, such as RAG strategies.
+- `tests/`: Unit and integration tests for the backend and core modules.
+- `docs/`: Project documentation, requirements, and design documents.
 
-```
-MochiRAG/
-├── backend/              FastAPI バックエンド
-├── core/                 RAG ロジック (ドキュメント処理／ベクトルストア)
-├── data/                 ChromaDB 永続化データ、サンプルdocs
-├── frontend/             Streamlit UI
-├── tests/                pytest テストコード
-├── config/               RAG 戦略設定 (strategies.yaml)
-├── status.md             プロジェクト進捗・ステータス
-├── testing_guide.md      テスト実行ガイド
-├── setup_dev.sh          セットアップスクリプト
-├── requirements.txt      依存関係定義
-└── README.md             本ドキュメント
-```
+## 🤝 Contributing
 
----
+Contributions are welcome! If you'd like to contribute, please follow these steps:
 
-## 9. API エンドポイント
+1.  Fork the repository.
+2.  Create a new branch (`git checkout -b feature/your-feature-name`).
+3.  Make your changes.
+4.  Commit your changes (`git commit -m 'feat: Add new feature'`).
+5.  Push to the branch (`git push origin feature/your-feature-name`).
+6.  Open a Pull Request.
 
-- `POST /users/`                                                 : 新規ユーザー登録
-- `POST /token`                                                  : トークン取得 (ログイン)
-- `GET  /users/me`                                               : 認証ユーザー情報取得
-- `POST /users/me/datasets/`                                     : データセット作成
-- `GET  /users/me/datasets/`                                     : データセット一覧取得
-- `GET  /users/me/datasets/{dataset_id}/`                        : 特定データセット詳細取得
-- `DELETE /users/me/datasets/{dataset_id}/`                      : データセット削除
-- `POST /users/me/datasets/{dataset_id}/documents/upload/`       : データセットへのファイルアップロード
-- `GET  /users/me/datasets/{dataset_id}/documents/`              : データセット内ファイル一覧取得
-- `DELETE /users/me/datasets/{dataset_id}/documents/{data_source_id}/`: データセットからのファイル削除
-- `POST /chat/query/`                                            : RAG チャットクエリ (データセット指定可)
-
-- `POST /documents/upload/` (非推奨: `/users/me/datasets/{dataset_id}/documents/upload/` を使用してください)
-- `GET  /documents/`       (非推奨: `/users/me/datasets/{dataset_id}/documents/` を使用してください)
-
-詳細は FastAPI 自動生成ドキュメント (`/docs` または `/redoc`) を参照。
-
----
-
-## 10. 今後の展望・ロードマップ
-
-- Azure OpenAI など外部 LLM の対応
-- チャット UI での引用元表示のさらなる強化（例: クリックで該当箇所表示など）
-- ドキュメント処理の非同期／バッチ化  
-- 管理者向けダッシュボード
+Please ensure your code adheres to the project's coding standards and includes appropriate tests.

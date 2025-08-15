@@ -1,60 +1,29 @@
 import pytest
-from backend.models import DataSourceMeta, ChatQueryRequest, ChatQueryResponse
-from uuid import uuid4
-from datetime import datetime
-from pydantic import ValidationError
+from sqlalchemy import inspect, Integer, String
+from sqlalchemy.orm import Mapped
 
-# DataSourceMeta のバリデーションテスト
+def test_user_model_exists():
+    """
+    Tests if the User model can be imported and has the correct columns.
+    """
+    try:
+        from backend.models import User
+    except ImportError:
+        pytest.fail("Could not import User model from backend.models")
 
-def test_datasource_meta_required_fields():
-    meta = DataSourceMeta(
-        data_source_id="file123",
-        original_filename="test.txt",
-        status="uploaded",
-        uploaded_at=datetime.now().isoformat()
-    )
-    assert meta.data_source_id == "file123"
-    assert meta.status == "uploaded"
-    assert meta.chunk_count is None
-    assert meta.additional_info is None
+    inspector = inspect(User)
+    columns = [c.name for c in inspector.columns]
 
-    # chunk_count, additional_info の型チェック
-    meta2 = DataSourceMeta(
-        data_source_id="file456",
-        original_filename="test2.txt",
-        status="processed",
-        uploaded_at=datetime.now().isoformat(),
-        chunk_count=10,
-        additional_info={"foo": "bar"}
-    )
-    assert meta2.chunk_count == 10
-    assert meta2.additional_info["foo"] == "bar"
+    assert "id" in columns
+    assert "email" in columns
+    assert "hashed_password" in columns
 
-    # 必須フィールドが足りない場合はエラー
-    with pytest.raises(ValidationError):
-        DataSourceMeta()
+    # Check types, especially for mapped columns
+    id_col = inspector.columns['id']
+    assert isinstance(id_col.type, Integer) # This will fail until sqlalchemy is imported
 
-# ChatQueryRequest のバリデーション
+    email_col = inspector.columns['email']
+    assert isinstance(email_col.type, String) # This will also fail
 
-def test_chatqueryrequest_validation():
-    req = ChatQueryRequest(question="What is RAG?", data_source_ids=["id1", "id2"])
-    assert req.question == "What is RAG?"
-    assert req.data_source_ids == ["id1", "id2"]
-
-    # data_source_ids 省略可
-    req2 = ChatQueryRequest(question="test")
-    assert req2.data_source_ids is None
-
-    # question は必須
-    with pytest.raises(ValidationError):
-        ChatQueryRequest()
-
-# ChatQueryResponse のバリデーション
-
-def test_chatqueryresponse_validation():
-    resp = ChatQueryResponse(answer="This is the answer.")
-    assert resp.answer == "This is the answer."
-
-    # answer は必須
-    with pytest.raises(ValidationError):
-        ChatQueryResponse()
+    # Check relationships if any in the future
+    # assert 'datasets' in inspector.relationships

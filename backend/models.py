@@ -1,75 +1,53 @@
-from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any, List
-import uuid
-from datetime import datetime
+import datetime
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy.orm import relationship
 
-class UserInDB(BaseModel):
-    user_id: uuid.UUID = Field(default_factory=uuid.uuid4)
-    username: str
-    email: str
-    hashed_password: str
-    disabled: bool = False
+from .database import Base
 
-class UserCreate(BaseModel):
-    username: str
-    email: str
-    password: str
+class User(Base):
+    __tablename__ = "users"
 
-class TokenData(BaseModel):
-    username: Optional[str] = None
-    user_id: Optional[uuid.UUID] = None
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, unique=True, index=True, nullable=False)
+    hashed_password = Column(String, nullable=False)
 
-class Token(BaseModel):
-    access_token: str
-    token_type: str
+    datasets = relationship("Dataset", back_populates="owner", cascade="all, delete-orphan")
+    data_sources = relationship("DataSource", back_populates="owner", cascade="all, delete-orphan")
 
-class User(BaseModel):
-    user_id: uuid.UUID
-    username: str
-    email: str
-    disabled: Optional[bool] = None
+class Dataset(Base):
+    __tablename__ = "datasets"
 
-class Dataset(BaseModel):
-    dataset_id: uuid.UUID = Field(default_factory=uuid.uuid4)
-    name: str = Field(..., min_length=1, max_length=100)
-    user_id: uuid.UUID
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
-    description: Optional[str] = None
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True, nullable=False)
+    description = Column(String, nullable=True)
+    
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    owner = relationship("User", back_populates="datasets")
+    
+    data_sources = relationship("DataSource", back_populates="dataset", cascade="all, delete-orphan")
 
-class DatasetCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=100)
-    description: Optional[str] = None
+class DataSource(Base):
+    __tablename__ = "data_sources"
 
-class DatasetUpdate(BaseModel):
-    name: Optional[str] = Field(None, min_length=1, max_length=100)
-    description: Optional[str] = None
+    id = Column(Integer, primary_key=True, index=True)
+    original_filename = Column(String, nullable=False)
+    file_path = Column(String, nullable=False, unique=True)
+    file_type = Column(String, nullable=False)
+    upload_date = Column(DateTime, default=datetime.datetime.utcnow)
 
-class DataSourceMeta(BaseModel):
-    data_source_id: str # Typically the filename or a unique ID for the source
-    dataset_id: uuid.UUID # Link to the Dataset
-    original_filename: str
-    status: str # e.g., "uploaded", "processing", "processed", "failed"
-    uploaded_at: str # ISO format timestamp
-    chunk_count: Optional[int] = None
-    additional_info: Optional[Dict[str, Any]] = None
-    embedding_strategy_used: Optional[str] = None # 追加: 使用されたエンベディング戦略
-    chunking_strategy_used: Optional[str] = None # 追加: 使用されたチャンキング戦略
-    chunking_config_used: Optional[Dict[str, Any]] = None # 追加: 使用されたチャンキング設定
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    owner = relationship("User", back_populates="data_sources")
 
-class DocumentUploadRequest(BaseModel): # 新規: ドキュメントアップロード時のリクエストボディ
-    embedding_strategy: Optional[str] = None # 指定がなければデフォルトを使用
-    chunking_strategy: Optional[str] = None  # 指定がなければデフォルトを使用
-    chunking_params: Optional[Dict[str, Any]] = None # チャンキング戦略のパラメータ (例: chunk_size)
+    dataset_id = Column(Integer, ForeignKey("datasets.id"), nullable=False)
+    dataset = relationship("Dataset", back_populates="data_sources")
 
+    parent_documents = relationship("ParentDocument", back_populates="data_source", cascade="all, delete-orphan")
 
-class ChatQueryRequest(BaseModel):
-    question: str
-    data_source_ids: Optional[List[str]] = None # Specific file IDs to query
-    dataset_ids: Optional[List[uuid.UUID]] = None # Specific dataset IDs to query (all files within them)
-    rag_strategy: Optional[str] = "basic" # Default to basic strategy
+class ParentDocument(Base):
+    __tablename__ = "parent_documents"
 
-class ChatQueryResponse(BaseModel):
-    answer: str
-    strategy_used: Optional[str] = None # To confirm which strategy was applied
-    sources: Optional[List[Dict[str, Any]]] = None # List of source documents, each a dict with "page_content" and "metadata"
+    id = Column(String, primary_key=True, index=True)
+    content = Column(String, nullable=False)
+    data_source_id = Column(Integer, ForeignKey("data_sources.id"), nullable=False)
+    
+    data_source = relationship("DataSource", back_populates="parent_documents")
