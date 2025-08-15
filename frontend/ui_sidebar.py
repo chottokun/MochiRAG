@@ -1,14 +1,15 @@
 import streamlit as st
 
-def handle_file_upload(dataset_id: int, uploader_key: str):
-    """Callback function to handle file uploads."""
-    uploaded_file = st.session_state.get(uploader_key)
-    if uploaded_file:
-        with st.spinner("Processing file..."):
+def handle_file_uploads(dataset_id: int, uploader_key: str):
+    """Callback function to handle multiple file uploads."""
+    uploaded_files = st.session_state.get(uploader_key)
+    if uploaded_files:
+        with st.spinner(f"Processing {len(uploaded_files)} file(s)..."):
             try:
-                st.session_state.api_client.upload_document(dataset_id, uploaded_file)
-                st.success("File uploaded!")
-                # No st.rerun() here, the state change of the widget handles it.
+                st.session_state.api_client.upload_documents(dataset_id, uploaded_files)
+                st.success("File(s) uploaded successfully!")
+                # To prevent re-triggering, we might need to clear the uploader state
+                # st.session_state[uploader_key] = [] # This can be tricky with Streamlit's state
             except Exception as e:
                 st.error(f"Upload failed: {e}")
 
@@ -51,8 +52,9 @@ def render_data_management():
                 f"Upload to '{dataset['name']}'",
                 type=["txt", "md", "pdf"],
                 key=uploader_key,
-                on_change=handle_file_upload,
-                args=(dataset['id'], uploader_key)
+                on_change=handle_file_uploads,
+                args=(dataset['id'], uploader_key),
+                accept_multiple_files=True
             )
 
             # --- Document List ---
@@ -88,6 +90,16 @@ def render_data_management():
 
 def render_sidebar():
     st.sidebar.title("MochiRAG Control Panel")
+
+    # --- Settings ---
+    st.sidebar.header("Settings")
+    st.session_state.api_timeout = st.number_input(
+        "API Timeout (seconds)", 
+        min_value=5, 
+        max_value=300, 
+        value=st.session_state.get("api_timeout", 30), 
+        step=5
+    )
 
     render_data_management()
 

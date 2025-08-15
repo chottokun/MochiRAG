@@ -8,8 +8,28 @@ st.set_page_config(page_title="MochiRAG", layout="wide")
 
 # --- State Management ---
 def initialize_session_state():
-    if "api_client" not in st.session_state:
-        st.session_state.api_client = ApiClient(base_url="http://localhost:8000")
+    if "api_timeout" not in st.session_state:
+        st.session_state.api_timeout = 30
+
+    api_client_needs_init = "api_client" not in st.session_state
+    timeout_changed = (
+        not api_client_needs_init and
+        st.session_state.api_client.client.timeout != st.session_state.api_timeout
+    )
+
+    if api_client_needs_init or timeout_changed:
+        old_token = None
+        if not api_client_needs_init:
+            old_token = st.session_state.api_client.token
+        
+        st.session_state.api_client = ApiClient(
+            base_url="http://localhost:8000",
+            timeout=st.session_state.api_timeout
+        )
+        
+        if old_token:
+            st.session_state.api_client.token = old_token
+
     if "messages" not in st.session_state:
         st.session_state.messages = []
     if "datasets" not in st.session_state:

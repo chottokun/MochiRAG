@@ -132,6 +132,52 @@ def upload_document_to_dataset(
 
     return db_data_source
 
+@app.post("/users/me/datasets/{dataset_id}/documents/upload_batch/", response_model=List[schemas.DataSource])
+def upload_documents_to_dataset(
+    dataset_id: int,
+    files: List[UploadFile] = File(...),
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    dataset = crud.get_dataset(db, dataset_id=dataset_id, owner_id=current_user.id)
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found or access denied")
+
+    upload_dir = "temp_uploads"
+    os.makedirs(upload_dir, exist_ok=True)
+    
+    data_sources = []
+    for file in files:
+        file_path = os.path.join(upload_dir, file.filename)
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        try:
+            data_source_schema = schemas.DataSourceCreate(
+                original_filename=file.filename,
+                file_type=file.content_type
+            )
+            db_data_source = crud.create_data_source(
+                db=db, 
+                data_source=data_source_schema, 
+                dataset_id=dataset_id, 
+                owner_id=current_user.id, 
+                file_path=file_path
+            )
+            ingestion_service.ingest_file(
+                file_path=file_path,
+                file_type=file.content_type,
+                data_source_id=db_data_source.id,
+                dataset_id=dataset_id,
+                user_id=current_user.id
+            )
+            data_sources.append(db_data_source)
+        finally:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+
+    return data_sources
+
 @app.get("/users/me/datasets/{dataset_id}/documents/", response_model=List[schemas.DataSource])
 def read_documents_for_dataset(
     dataset_id: int,

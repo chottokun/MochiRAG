@@ -2,9 +2,9 @@ import httpx
 from typing import List, Dict, Any, Optional
 
 class ApiClient:
-    def __init__(self, base_url: str):
+    def __init__(self, base_url: str, timeout: float = 30.0):
         self.base_url = base_url
-        self.client = httpx.Client()
+        self.client = httpx.Client(timeout=timeout)
         self.token: Optional[str] = None
 
     def _get_auth_headers(self) -> Dict[str, str]:
@@ -70,12 +70,12 @@ class ApiClient:
         response.raise_for_status()
         return response.json()
 
-    def upload_document(self, dataset_id: int, file) -> Dict[str, Any]:
+    def upload_documents(self, dataset_id: int, files: List[Any]) -> List[Dict[str, Any]]:
         headers = self._get_auth_headers()
-        files = {"file": (file.name, file, file.type)}
+        file_list = [("files", (file.name, file, file.type)) for file in files]
         response = self.client.post(
-            f"{self.base_url}/users/me/datasets/{dataset_id}/documents/upload/",
-            files=files,
+            f"{self.base_url}/users/me/datasets/{dataset_id}/documents/upload_batch/",
+            files=file_list,
             headers=headers
         )
         response.raise_for_status()

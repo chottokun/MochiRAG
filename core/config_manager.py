@@ -1,12 +1,15 @@
 import yaml
 from pydantic import BaseModel, Field
 from typing import Dict, Any
+from pathlib import Path
+import os
 
 # --- Pydantic Models for Configuration Validation ---
 
 class EmbeddingConfig(BaseModel):
     provider: str
     model_name: str
+    base_url: str | None = None
 
 class LLMConfig(BaseModel):
     provider: str
@@ -33,9 +36,13 @@ class ConfigManager:
             cls._instance = super(ConfigManager, cls).__new__(cls)
         return cls._instance
 
-    def __init__(self, config_path: str = "config/strategies.yaml"):
+    def __init__(self, config_path: str = None):
         # The check prevents re-initialization on subsequent calls
         if not hasattr(self, 'is_initialized'):
+            if config_path is None:
+                # Build a path relative to this file to find the config
+                base_path = Path(os.path.dirname(os.path.abspath(__file__))).parent
+                config_path = base_path / "config" / "strategies.yaml"
             with open(config_path, 'r') as f:
                 yaml_data = yaml.safe_load(f)
             self.config = AppConfig(**yaml_data)
