@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from typing import List
 import shutil
 import os
+from uuid import uuid4
 from contextlib import asynccontextmanager
 
 from . import crud, models, schemas, security
@@ -246,21 +247,32 @@ def delete_document_from_dataset(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    # 1. Verify user owns the dataset
+    # 1. Verify user owns the dataset and the document exists
     dataset = crud.get_dataset(db, dataset_id=dataset_id, owner_id=current_user.id)
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found or access denied")
 
-    # 2. Verify the document exists and belongs to the specified dataset
     doc_to_delete = crud.get_data_source(db, data_source_id=document_id, owner_id=current_user.id)
     if not doc_to_delete or doc_to_delete.dataset_id != dataset_id:
         raise HTTPException(status_code=404, detail="Document not found in this dataset")
 
-    # 3. Delete the document
+    # 2. Delete vectors from the vector store BEFORE deleting the metadata
+    try:
+        collection_name = f"user_{current_user.id}"
+        filter_criteria = {"data_source_id": document_id}
+        vector_store_manager.delete_documents(collection_name, filter_criteria)
+    except Exception as e:
+        # If vector deletion fails, we should log the error and consider
+        # how to handle it. For now, we'll raise an HTTPException to
+        # make the operation fail atomically.
+        print(f"Failed to delete vectors for document {document_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete document vectors from storage.")
+
+    # 3. Delete the document metadata from the SQL database
     deleted_doc = crud.delete_data_source(db, data_source_id=document_id, owner_id=current_user.id)
     if not deleted_doc:
         # This case should ideally not be reached if the above checks pass
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=404, detail="Document could not be deleted from database after vector removal.")
 
     return deleted_doc
 

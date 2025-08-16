@@ -36,5 +36,26 @@ class VectorStoreManager:
         vector_store.add_documents(documents)
         print(f"{len(documents)} documents added to collection '{collection_name}'.")
 
+    def delete_documents(self, collection_name: str, filter_criteria: dict):
+        """Delete documents from a specific collection based on metadata filter."""
+        vector_store = self.get_vector_store(collection_name)
+        try:
+            # Use the 'get' method to find document IDs matching the filter
+            # Note: ChromaDB's .get() with a where filter can be inefficient
+            # on large datasets if the metadata is not indexed.
+            # For this application's scale, it's acceptable.
+            ids_to_delete = vector_store.get(where=filter_criteria, include=[])['ids']
+
+            if ids_to_delete:
+                vector_store.delete(ids=ids_to_delete)
+                print(f"Deleted {len(ids_to_delete)} vectors from collection '{collection_name}'.")
+            else:
+                print(f"No vectors found to delete in '{collection_name}' with filter: {filter_criteria}")
+        except Exception as e:
+            # Broad exception for now, but can be refined
+            print(f"Error deleting documents from '{collection_name}': {e}")
+            # Optionally re-raise or handle specific exceptions
+            raise
+
 # Create a single, globally accessible instance
 vector_store_manager = VectorStoreManager()
