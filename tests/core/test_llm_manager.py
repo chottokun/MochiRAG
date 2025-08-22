@@ -59,7 +59,7 @@ def test_llm_manager_raises_error_for_unknown_provider(mock_config_mgr):
     llm_manager = LLMManager()
 
     # --- Act & Assert ---
-    with pytest.raises(ValueError, match="Unsupported LLM provider: unknown_provider"):
+    with pytest.raises(ValueError, match="Unsupported LLM provider: 'unknown_provider'"):
         llm_manager.get_llm("test_unknown")
 
 @patch("core.llm_manager.config_manager")

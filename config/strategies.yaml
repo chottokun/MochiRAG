@@ -16,6 +16,32 @@ llms:
     model_name: "gemma3:4b-it-qat" # Using a standard name, as gemma3:4b-it-qat might be custom
     base_url: "http://localhost:11434"
 
+  # --- OpenAI Configuration ---
+  # Replace with your actual OpenAI model and API key
+  gpt-4o:
+    provider: openai
+    model_name: "gpt-4o"
+    api_key: "YOUR_OPENAI_API_KEY" # Replace with your key or set OPENAI_API_KEY environment variable
+    temperature: 0.7
+
+  # --- Azure OpenAI Configuration ---
+  # Replace with your Azure deployment details
+  azure-gpt-4:
+    provider: azure
+    deployment_name: "YOUR_DEPLOYMENT_NAME"
+    azure_endpoint: "YOUR_AZURE_ENDPOINT" # e.g., https://your-resource.openai.azure.com/
+    api_version: "2024-02-01"
+    api_key: "YOUR_AZURE_API_KEY" # Replace with your key or set AZURE_OPENAI_API_KEY environment variable
+    temperature: 0.7
+
+  # --- Google Gemini Configuration ---
+  # Replace with your Gemini model and API key
+  gemini-1.5-pro:
+    provider: gemini
+    model_name: "gemini-1.5-pro-latest"
+    api_key: "YOUR_GOOGLE_API_KEY" # Replace with your key or set GOOGLE_API_KEY environment variable
+    temperature: 0.7
+
 # Retriever strategies configuration
 retrievers:
   # Configuration for the basic semantic search

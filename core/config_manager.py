@@ -1,6 +1,6 @@
 import yaml
 from pydantic import BaseModel, Field
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from pathlib import Path
 import os
 
@@ -13,8 +13,13 @@ class EmbeddingConfig(BaseModel):
 
 class LLMConfig(BaseModel):
     provider: str
-    model_name: str
-    base_url: str
+    model_name: Optional[str] = None
+    base_url: Optional[str] = None
+    api_key: Optional[str] = None
+    deployment_name: Optional[str] = None
+    azure_endpoint: Optional[str] = None
+    api_version: Optional[str] = None
+    temperature: Optional[float] = 0.7
 
 class RetrieverStrategyConfig(BaseModel):
     strategy_class: str
