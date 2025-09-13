@@ -9,9 +9,9 @@
 # `path`: The local directory to store database files (only for 'persistent' mode).
 vector_store:
   provider: chromadb
-  mode: persistent # Can be 'persistent' or 'http'
+  mode: http # 'persistent # Can be 'persistent' or 'http'
   host: localhost
-  port: 8000
+  port: 8001  # Changed to 8001 to avoid conflict with backend uvicorn (8000)
   path: "chroma_db"
 
 # Embedding models configuration

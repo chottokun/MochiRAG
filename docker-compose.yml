@@ -1,0 +1,57 @@
+services:
+  chroma:
+    image: chromadb/chroma:latest
+    restart: unless-stopped
+    ports:
+      - "8001:8000" # host:container -> expose chroma API on host 8001
+    volumes:
+      - ./chroma_db:/data
+    environment:
+      - CHROMA_DB_IMPL=persistent
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/api/v2/auth/identity || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    restart: unless-stopped
+    depends_on:
+      - chroma
+    ports:
+      - "8000:8000" # backend uvicorn on host 8000
+    environment:
+      # Let backend connect to chroma using service name 'chroma' and container port 8000
+      - CHROMA_HOST=chroma
+      - CHROMA_PORT=8000
+      # If Ollama is running on the Docker host, set this to the host gateway so
+      # the backend can reach it from inside the container.
+      - OLLAMA_BASE_URL=http://172.17.0.1:11434
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://$${OLLAMA_BASE_URL#http://}/api/embed || (curl -fsS http://chroma:8000/api/v2/pre-flight-checks >/dev/null) || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    volumes:
+      - ./:/app
+    command: ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "8501:8501" # Streamlit UI
+    environment:
+      - BACKEND_URL=http://backend:8000
+    volumes:
+      - ./frontend:/app/frontend
+
+# Optional: add a network (defaults are fine)
+networks: {}

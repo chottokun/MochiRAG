@@ -2,11 +2,16 @@ from langchain_community.document_loaders import PyPDFLoader, TextLoader, Unstru
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from typing import List
 import uuid
+import time
 
 from .vector_store_manager import vector_store_manager
 from langchain_core.documents import Document
 from backend import crud
 from backend.database import SessionLocal
+
+class EmbeddingServiceError(Exception):
+    """Raised when the embedding service (e.g. Ollama) is unreachable or fails."""
+
 
 class IngestionService:
     def __init__(self):
@@ -42,7 +47,21 @@ class IngestionService:
             })
 
         collection_name = self._get_collection_name(user_id)
-        vector_store_manager.add_documents(collection_name, chunks)
+
+        # Try to add documents with retry/backoff to tolerate temporary embedding service failures
+        max_retries = 3
+        delay = 1
+        for attempt in range(1, max_retries + 1):
+            try:
+                vector_store_manager.add_documents(collection_name, chunks)
+                break
+            except Exception as e:
+                # If last attempt, raise a domain-specific error for the caller to translate to HTTP 503
+                if attempt == max_retries:
+                    raise EmbeddingServiceError(f"failed to add documents after {max_retries} attempts: {e}")
+                # otherwise wait and retry
+                time.sleep(delay)
+                delay *= 2
 
     def _ingest_for_parent_document(self, file_path: str, file_type: str, data_source_id: int, dataset_id: int, user_id: int):
         """Ingestion process for the ParentDocumentRetriever."""
@@ -76,7 +95,18 @@ class IngestionService:
                 child_docs.extend(sub_docs)
 
             collection_name = self._get_collection_name(user_id)
-            vector_store_manager.add_documents(collection_name, child_docs)
+            # Same retry/backoff strategy for parent/child ingestion
+            max_retries = 3
+            delay = 1
+            for attempt in range(1, max_retries + 1):
+                try:
+                    vector_store_manager.add_documents(collection_name, child_docs)
+                    break
+                except Exception as e:
+                    if attempt == max_retries:
+                        raise EmbeddingServiceError(f"failed to add documents after {max_retries} attempts: {e}")
+                    time.sleep(delay)
+                    delay *= 2
         finally:
             db.close()
 
