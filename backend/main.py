@@ -270,11 +270,13 @@ def delete_document_from_dataset(
 
     return deleted_doc
 
+from core.config_manager import config_manager
+
 @app.get("/chat/strategies/")
 def get_available_rag_strategies():
-    """Returns a list of available RAG strategies from the retriever manager."""
-    from core.retriever_manager import retriever_manager
-    return {"strategies": list(retriever_manager.strategies.keys())}
+    """Returns a list of available RAG strategies from the config."""
+    retriever_configs = config_manager.config.retrievers
+    return {"strategies": list(retriever_configs.keys())}
 
 @app.post("/chat/query/", response_model=schemas.QueryResponse)
 def query_rag_chain(

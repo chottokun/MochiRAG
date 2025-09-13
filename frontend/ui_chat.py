@@ -24,10 +24,6 @@ def render_chat_settings():
             st.session_state.selected_dataset_names = selected_dataset_names
             st.session_state.selected_dataset_ids = [dataset_options[name] for name in selected_dataset_names]
         with col2:
-            # Add 'deeprag' to the list of strategies if it's not already there
-            if 'deeprag' not in st.session_state.rag_strategies:
-                st.session_state.rag_strategies.append('deeprag')
-            
             selected_strategy = st.selectbox(
                 "Select RAG Strategy",
                 options=st.session_state.rag_strategies,
@@ -35,6 +31,14 @@ def render_chat_settings():
                 if st.session_state.get("selected_strategy") in st.session_state.rag_strategies else 0
             )
             st.session_state.selected_strategy = selected_strategy
+
+            use_history = st.checkbox(
+                "Use Chat History",
+                value=st.session_state.get("use_chat_history", True),
+                help="If checked, the conversation history will be sent to the model."
+            )
+            st.session_state.use_chat_history = use_history
+
 
 def render_chat():
     st.header("Chat with your documents")
@@ -80,10 +84,13 @@ def render_chat():
                         st.session_state.messages.pop() # Remove user prompt
                         return
 
+                    history = st.session_state.messages[:-1] if st.session_state.get("use_chat_history") else None
+
                     response = st.session_state.api_client.query_rag(
                         query=prompt,
                         dataset_ids=dataset_ids,
-                        strategy=strategy
+                        strategy=strategy,
+                        history=history
                     )
                     answer = response.get("answer", "Sorry, I couldn't find an answer.")
                     sources = response.get("sources", [])

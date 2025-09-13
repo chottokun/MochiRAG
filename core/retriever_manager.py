@@ -108,16 +108,34 @@ class ParentDocumentRetrieverStrategy(RetrieverStrategy):
             parent_splitter=parent_splitter,
         )
 
+import importlib
+import inspect
+import logging
+
+logger = logging.getLogger(__name__)
+
 # --- RetrieverManager --- 
 
 class RetrieverManager:
     def __init__(self):
-        self.strategies = {
-            "basic": BasicRetrieverStrategy(),
-            "multiquery": MultiQueryRetrieverStrategy(),
-            "compression": ContextualCompressionRetrieverStrategy(),
-            "parent_document": ParentDocumentRetrieverStrategy(),
-        }
+        self.strategies = {}
+        retriever_configs = config_manager.config.retrievers
+        current_module = importlib.import_module(__name__)
+
+        for name, config in retriever_configs.items():
+            strategy_class_name = config.strategy_class
+            if not strategy_class_name:
+                continue
+
+            try:
+                StrategyClass = getattr(current_module, strategy_class_name)
+                if inspect.isclass(StrategyClass) and issubclass(StrategyClass, RetrieverStrategy):
+                    self.strategies[name] = StrategyClass()
+            except AttributeError:
+                logger.info(
+                    f"Strategy class '{strategy_class_name}' not found in retriever_manager module, skipping. "
+                    "This is expected for non-retriever strategies like DeepRAG."
+                )
 
     def get_retriever(self, strategy_name: str, user_id: int, dataset_ids: Optional[List[int]] = None) -> BaseRetriever:
         if strategy_name not in self.strategies:

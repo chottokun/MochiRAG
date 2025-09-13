@@ -1,4 +1,4 @@
-from typing import List, Tuple, Any, Dict
+from typing import List, Tuple, Any, Dict, Optional
 from langchain_core.prompts import PromptTemplate
 
 from .llm_manager import llm_manager
@@ -12,12 +12,15 @@ class DeepRAGStrategy:
         self.dataset_ids = dataset_ids
 
         self.decomp_prompt = PromptTemplate(
-            input_variables=["question", "history"],
+            input_variables=["question", "history", "subquery_history"],
             template=(
                 "You are a RAG system that decomposes queries step-by-step.\n"
-                "History: {history}\n"
+                "Given the conversation history, and the main question, "
+                "generate the next atomic subquery to investigate, or 'TERMINATE' to finish.\n\n"
+                "Conversation History:\n{history}\n\n"
                 "Main Question: {question}\n"
-                "Generate the next atomic subquery or 'TERMINATE' to finish."
+                "Sub-query History (already explored): {subquery_history}\n\n"
+                "Next sub-query or TERMINATE:"
             )
         )
         self.answer_prompt = PromptTemplate(
@@ -30,17 +33,26 @@ class DeepRAGStrategy:
             )
         )
 
-    def run(self, question: str, max_depth: int = 5) -> Dict[str, Any]:
-        final_answer, trace = self._binary_tree_search(question, max_depth)
+    def run(self, question: str, history: Optional[List[Dict[str, str]]] = None, max_depth: int = 5) -> Dict[str, Any]:
+        final_answer, trace = self._binary_tree_search(question, history, max_depth)
         return {"answer": final_answer, "trace": trace}
 
-    def _binary_tree_search(self, question: str, max_depth: int) -> Tuple[str, List[dict]]:
+    def _binary_tree_search(self, question: str, history: Optional[List[Dict[str, str]]], max_depth: int) -> Tuple[str, List[dict]]:
+
+        formatted_history = "\n".join([f"{msg['role']}: {msg['content']}" for msg in history]) if history else "No history."
+
         def recurse(q: str, depth: int, path: List[dict]) -> Any:
             if depth >= max_depth:
                 return path
 
+            subquery_history = " ; ".join(p['subquery'] for p in path) if path else "None"
+
             chain = self.decomp_prompt | self.llm
-            sub = chain.invoke({"question": q, "history": " ; ".join(p['subquery'] for p in path)}).content.strip()
+            sub = chain.invoke({
+                "question": q,
+                "history": formatted_history,
+                "subquery_history": subquery_history
+            }).content.strip()
 
             if sub.upper() == "TERMINATE":
                 return path
