@@ -64,6 +64,13 @@ retrievers:
     description: "A standard vector similarity search."
     parameters:
       k: 5 # Number of documents to retrieve
+      # Text splitting (chunking) controls used when ingesting documents for this retriever.
+      # You can tune these to balance retrieval granularity vs. context size.
+      # - chunk_size: approx. characters per chunk (default shown here)
+      # - chunk_overlap: characters overlap between adjacent chunks
+      # Example (defaults):
+      chunk_size: 1000
+      chunk_overlap: 200
   multiquery:
     strategy_class: "MultiQueryRetrieverStrategy"
     description: "Generates multiple queries from different perspectives for a given user question."
@@ -76,8 +83,13 @@ retrievers:
     strategy_class: "ParentDocumentRetrieverStrategy"
     description: "Retrieves smaller chunks of documents and returns the parent document."
     parameters:
+      # Parent/child chunking controls. Parent chunks are larger documents
+      # that will be returned to the LLM, while child chunks are the
+      # smaller indexed chunks used for retrieval.
       parent_chunk_size: 2000
+      parent_chunk_overlap: 200
       child_chunk_size: 400
+      child_chunk_overlap: 100
   deeprag:
     strategy_class: "DeepRAGStrategy"
     description: "Decomposes complex questions into a series of simpler subqueries to build a comprehensive answer."

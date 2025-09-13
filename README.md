@@ -175,3 +175,18 @@ Ollama (external) notes:
   - Start Ollama as a container in the same compose file (recommended), or
   - Use the Docker host gateway IP from inside the container (commonly `172.17.0.1`) and set the environment variable `OLLAMA_BASE_URL` for the `backend` service in `docker-compose.yml`, e.g. `OLLAMA_BASE_URL=http://172.17.0.1:11434`.
   - We added support for `OLLAMA_BASE_URL` in `core/config_manager.py` which will override embedding/LLM base_url entries from `config/strategies.yaml`.
+
+  Chunking configuration (ingestion)
+  ---------------------------------
+
+  You can control how documents are split into chunks via `config/strategies.yaml` under the `retrievers` section. Two primary retrievers expose chunking options:
+
+  - `retrievers.basic.parameters`:
+    - `chunk_size` (int): approximate characters per chunk (default: 1000)
+    - `chunk_overlap` (int): overlap in characters between chunks (default: 200)
+
+  - `retrievers.parent_document.parameters`:
+    - `parent_chunk_size` / `parent_chunk_overlap` (int): size/overlap for parent document chunks (defaults: 2000 / 200)
+    - `child_chunk_size` / `child_chunk_overlap` (int): size/overlap for indexed child chunks (defaults: 400 / 100)
+
+  Edit these values and restart the backend to change ingestion behavior. Reasonable defaults are included in the example `config/strategies.yaml` file.

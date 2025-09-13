@@ -5,7 +5,7 @@ import uuid
 import time
 
 from .vector_store_manager import vector_store_manager
-from langchain_core.documents import Document
+from .config_manager import config_manager
 from backend import crud
 from backend.database import SessionLocal
 
@@ -15,9 +15,40 @@ class EmbeddingServiceError(Exception):
 
 class IngestionService:
     def __init__(self):
-        self.text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-        self.parent_splitter = RecursiveCharacterTextSplitter(chunk_size=2000, chunk_overlap=200)
-        self.child_splitter = RecursiveCharacterTextSplitter(chunk_size=400, chunk_overlap=100)
+        # Defaults (kept for backward compatibility)
+        default_chunk_size = 1000
+        default_chunk_overlap = 200
+        default_parent_chunk_size = 2000
+        default_parent_chunk_overlap = 200
+        default_child_chunk_size = 400
+        default_child_chunk_overlap = 100
+
+        # Attempt to read retriever parameters from configuration (if provided)
+        try:
+            retriever_cfg = config_manager.get_retriever_config('basic')
+            params = retriever_cfg.parameters or {}
+            chunk_size = int(params.get('chunk_size', default_chunk_size))
+            chunk_overlap = int(params.get('chunk_overlap', default_chunk_overlap))
+        except Exception:
+            chunk_size = default_chunk_size
+            chunk_overlap = default_chunk_overlap
+
+        try:
+            parent_cfg = config_manager.get_retriever_config('parent_document')
+            pparams = parent_cfg.parameters or {}
+            parent_chunk_size = int(pparams.get('parent_chunk_size', default_parent_chunk_size))
+            parent_chunk_overlap = int(pparams.get('parent_chunk_overlap', default_parent_chunk_overlap))
+            child_chunk_size = int(pparams.get('child_chunk_size', default_child_chunk_size))
+            child_chunk_overlap = int(pparams.get('child_chunk_overlap', default_child_chunk_overlap))
+        except Exception:
+            parent_chunk_size = default_parent_chunk_size
+            parent_chunk_overlap = default_parent_chunk_overlap
+            child_chunk_size = default_child_chunk_size
+            child_chunk_overlap = default_child_chunk_overlap
+
+        self.text_splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+        self.parent_splitter = RecursiveCharacterTextSplitter(chunk_size=parent_chunk_size, chunk_overlap=parent_chunk_overlap)
+        self.child_splitter = RecursiveCharacterTextSplitter(chunk_size=child_chunk_size, chunk_overlap=child_chunk_overlap)
 
     def ingest_file(self, file_path: str, file_type: str, data_source_id: int, dataset_id: int, user_id: int, strategy: str = "basic"):
         """
