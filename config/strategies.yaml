@@ -1,5 +1,19 @@
 # Configuration for MochiRAG models and strategies
 
+# Vector Store Configuration
+# Configure the vector store used by the application.
+# `provider`: Currently only 'chromadb' is supported.
+# `mode`: 'persistent' for local file-based storage, 'http' for client-server mode.
+# `host`: The hostname of the ChromaDB server (only for 'http' mode).
+# `port`: The port of the ChromaDB server (only for 'http' mode).
+# `path`: The local directory to store database files (only for 'persistent' mode).
+vector_store:
+  provider: chromadb
+  mode: persistent # Can be 'persistent' or 'http'
+  host: localhost
+  port: 8000
+  path: "chroma_db"
+
 # Embedding models configuration
 embeddings:
   # Default model for embedding text. Excellent performance for its size.

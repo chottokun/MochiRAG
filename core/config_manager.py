@@ -21,12 +21,20 @@ class LLMConfig(BaseModel):
     api_version: Optional[str] = None
     temperature: Optional[float] = 0.7
 
+class VectorStoreConfig(BaseModel):
+    provider: str
+    mode: str
+    host: Optional[str] = None
+    port: Optional[int] = None
+    path: Optional[str] = None
+
 class RetrieverStrategyConfig(BaseModel):
     strategy_class: str
     description: str
     parameters: Dict[str, Any]
 
 class AppConfig(BaseModel):
+    vector_store: VectorStoreConfig
     embeddings: Dict[str, EmbeddingConfig]
     llms: Dict[str, LLMConfig]
     retrievers: Dict[str, RetrieverStrategyConfig]
@@ -72,6 +80,11 @@ class ConfigManager:
         if name not in self.config.retrievers:
             raise ValueError(f"Retriever configuration '{name}' not found in strategies.yaml")
         return self.config.retrievers[name]
+
+    def get_vector_store_config(self) -> VectorStoreConfig:
+        if not self.config.vector_store:
+            raise ValueError("Vector store configuration not found in strategies.yaml")
+        return self.config.vector_store
 
 # Create a single, globally accessible instance of the ConfigManager
 config_manager = ConfigManager()

@@ -88,6 +88,37 @@ streamlit run frontend/app.py
 ```
 The frontend will be available at `http://localhost:8501`. Open this URL in your browser to use the application.
 
+### Using ChromaDB in Client-Server Mode
+
+By default, MochiRAG runs ChromaDB in a local, file-based mode. For multi-user or larger-scale deployments, you can run ChromaDB as a separate server and configure MochiRAG to connect to it.
+
+**1. Run ChromaDB Server (using Docker):**
+
+The easiest way to run a ChromaDB server is with Docker.
+
+```bash
+docker run -p 8000:8000 chromadb/chroma
+```
+
+This will start a ChromaDB server listening on `http://localhost:8000`.
+
+**2. Configure MochiRAG:**
+
+Next, update the `config/strategies.yaml` file to tell MochiRAG to connect to the Chroma server instead of running its own local instance.
+
+```yaml
+# config/strategies.yaml
+
+vector_store:
+  provider: chromadb
+  mode: http       # Change 'persistent' to 'http'
+  host: localhost  # Or the IP of your Docker host
+  port: 8000
+  # The 'path' property is ignored in http mode
+```
+
+After making this change, restart the MochiRAG backend. It will now connect to the external ChromaDB server.
+
 ## 🧪 Running Tests
 
 The test suite is built with `pytest` and is designed to run without any external service dependencies (it uses an in-memory SQLite database and mocks for API tests).
