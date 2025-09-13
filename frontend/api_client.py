@@ -1,9 +1,12 @@
 import httpx
+import os
 from typing import List, Dict, Any, Optional
 
 class ApiClient:
     def __init__(self, base_url: str, timeout: float = 30.0):
-        self.base_url = base_url
+        # Allow overriding via BACKEND_URL environment variable (useful in Docker)
+        env_url = os.getenv('BACKEND_URL')
+        self.base_url = env_url if env_url else base_url
         self.client = httpx.Client(timeout=timeout)
         self.token: Optional[str] = None
 

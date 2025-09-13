@@ -3,6 +3,7 @@ from langchain_chroma import Chroma
 from typing import List, Optional
 
 from .embedding_manager import embedding_manager
+from .config_manager import config_manager
 from langchain_core.documents import Document
 
 class VectorStoreManager:
@@ -10,12 +11,27 @@ class VectorStoreManager:
         self.client: Optional[chromadb.Client] = None
         self.embedding_function = embedding_manager.get_embedding_model()
 
-    def initialize_client(self, db_path: str = "chroma_db"):
-        """Initializes the ChromaDB client. Should be called once on app startup."""
-        if self.client is None:
-            print("Initializing ChromaDB client...")
-            self.client = chromadb.PersistentClient(path=db_path)
-            print("ChromaDB client initialized.")
+    def initialize_client(self):
+        """
+        Initializes the ChromaDB client based on the configuration
+        in `config/strategies.yaml`. Should be called once on app startup.
+        """
+        if self.client is not None:
+            return
+
+        print("Initializing ChromaDB client...")
+        config = config_manager.get_vector_store_config()
+
+        if config.mode == 'http':
+            print(f"Connecting to ChromaDB server at {config.host}:{config.port}...")
+            self.client = chromadb.HttpClient(host=config.host, port=config.port)
+        elif config.mode == 'persistent':
+            print(f"Initializing persistent ChromaDB at path: {config.path}")
+            self.client = chromadb.PersistentClient(path=config.path)
+        else:
+            raise ValueError(f"Unsupported ChromaDB mode: {config.mode}")
+
+        print("ChromaDB client initialized successfully.")
 
     def _get_client(self) -> chromadb.Client:
         if self.client is None:

@@ -63,9 +63,31 @@ uv pip sync --all
 プロジェクトルートに`.env`ファイルを作成し、必要な環境変数を設定します。
 
 ```
-# 例
+# .env file
+
+# JWT署名のための秘密鍵 (必須)
+SECRET_KEY=your-super-secret-key-for-jwt
+
+# Ollamaを使用する場合
 OLLAMA_BASE_URL=http://localhost:11434
+
+# --- 各LLMプロバイダーのAPIキー ---
+# 使用するプロバイダーに応じて設定してください。
+# config/strategies.yamlで直接指定することも可能ですが、
+# .envファイルで管理することが推奨されます。
+
+# OpenAI
+OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# Azure OpenAI
+AZURE_OPENAI_API_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+
+# Google Gemini
+GOOGLE_API_KEY=AIzaSyxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
+
+`python-dotenv`が自動的にこのファイルを読み込み、環境変数として設定します。
 
 ### 3.2. LangSmith連携（強く推奨）
 

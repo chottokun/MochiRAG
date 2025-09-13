@@ -88,6 +88,38 @@ streamlit run frontend/app.py
 ```
 The frontend will be available at `http://localhost:8501`. Open this URL in your browser to use the application.
 
+### Using ChromaDB in Client-Server Mode
+
+By default, MochiRAG runs ChromaDB in a local, file-based mode. For multi-user or larger-scale deployments, you can run ChromaDB as a separate server and configure MochiRAG to connect to it.
+
+**1. Run ChromaDB Server (using Docker):**
+
+The easiest way to run a ChromaDB server is with Docker.
+
+```bash
+# Map host port 8001 to the Chroma container's internal port 8000 to avoid colliding with the backend (uvicorn) on 8000
+docker run -p 8001:8000 chromadb/chroma
+```
+
+This will start a ChromaDB server listening on `http://localhost:8001` (host -> container 8001:8000).
+
+**2. Configure MochiRAG:**
+
+Next, update the `config/strategies.yaml` file to tell MochiRAG to connect to the Chroma server instead of running its own local instance.
+
+```yaml
+# config/strategies.yaml
+
+vector_store:
+  provider: chromadb
+  mode: http       # Change 'persistent' to 'http'
+  host: localhost  # Or the IP of your Docker host
+  port: 8001
+  # The 'path' property is ignored in http mode
+```
+
+After making this change, restart the MochiRAG backend. It will now connect to the external ChromaDB server.
+
 ## 🧪 Running Tests
 
 The test suite is built with `pytest` and is designed to run without any external service dependencies (it uses an in-memory SQLite database and mocks for API tests).
@@ -108,3 +140,53 @@ This will discover and run all tests in the `tests/` directory.
 - `config/`: Configuration files, such as RAG strategies.
 - `tests/`: Unit and integration tests for the backend and core modules.
 - `docs/`: Project documentation, requirements, and design documents.
+
+## 🚢 Running with Docker Compose
+
+You can run Chroma and the backend together with docker-compose. This compose file maps the host ports so they don't collide:
+
+- Chroma (container port 8000) -> host port 8001
+- Backend (uvicorn, container port 8000) -> host port 8000
+
+1. Build and start services:
+
+```bash
+docker compose up --build -d
+```
+
+2. Check services:
+
+```bash
+docker compose ps
+```
+
+3. Open the services:
+
+- Frontend (Streamlit): http://localhost:8501 (run locally or containerize separately)
+- Backend API: http://localhost:8000
+- Chroma HTTP API: http://localhost:8001
+
+Notes:
+- The backend container connects to Chroma using the internal Docker network; it reaches Chroma at `http://chroma:8000` (service name `chroma`).
+- If you run the frontend separately on your host, ensure it talks to the backend at `http://localhost:8000`.
+
+Ollama (external) notes:
+- If you run Ollama on your host machine (not as a container in the same compose network), the backend container cannot use `localhost` to reach it. In that case either:
+  - Start Ollama as a container in the same compose file (recommended), or
+  - Use the Docker host gateway IP from inside the container (commonly `172.17.0.1`) and set the environment variable `OLLAMA_BASE_URL` for the `backend` service in `docker-compose.yml`, e.g. `OLLAMA_BASE_URL=http://172.17.0.1:11434`.
+  - We added support for `OLLAMA_BASE_URL` in `core/config_manager.py` which will override embedding/LLM base_url entries from `config/strategies.yaml`.
+
+  Chunking configuration (ingestion)
+  ---------------------------------
+
+  You can control how documents are split into chunks via `config/strategies.yaml` under the `retrievers` section. Two primary retrievers expose chunking options:
+
+  - `retrievers.basic.parameters`:
+    - `chunk_size` (int): approximate characters per chunk (default: 1000)
+    - `chunk_overlap` (int): overlap in characters between chunks (default: 200)
+
+  - `retrievers.parent_document.parameters`:
+    - `parent_chunk_size` / `parent_chunk_overlap` (int): size/overlap for parent document chunks (defaults: 2000 / 200)
+    - `child_chunk_size` / `child_chunk_overlap` (int): size/overlap for indexed child chunks (defaults: 400 / 100)
+
+  Edit these values and restart the backend to change ingestion behavior. Reasonable defaults are included in the example `config/strategies.yaml` file.

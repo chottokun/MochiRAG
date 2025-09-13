@@ -2,6 +2,59 @@
 
 （...既存のセクションは省略...）
 
+## 2. LLMプロバイダーの管理 (LLM Provider Management)
+
+MochiRAGは、複数の大規模言語モデル（LLM）プロバイダーをサポートするように設計されています。これにより、特定のユースケースや要件に応じて、最適なLLMを柔軟に選択できます。中心的な役割を担うのが `core/llm_manager.py` に実装されている `LLMManager` シングルトンです。
+
+### 2.1. サポートするプロバイダー
+
+現在、以下のプロバイダーがサポートされています。
+
+- **Ollama**: ローカル環境でオープンソースモデルを実行するためのフレームワーク。
+- **OpenAI**: `gpt-4o` などの高性能なモデルを提供。
+- **Azure OpenAI**: Microsoft Azure上でOpenAIのモデルをセキュアに利用するためのサービス。
+- **Google Gemini**: Googleの次世代モデルファミリー。
+
+### 2.2. 設定方法
+
+使用するLLMは `config/strategies.yaml` ファイルの `llms` セクションで設定します。各プロバイダーごとに必要なパラメータが異なります。
+
+**設定例:**
+```yaml
+llms:
+  # Ollama
+  gemma3:4b-it-qat:
+    provider: ollama
+    model_name: "gemma3:4b-it-qat"
+    base_url: "http://localhost:11434"
+
+  # OpenAI
+  gpt-4o:
+    provider: openai
+    model_name: "gpt-4o"
+    api_key: "YOUR_OPENAI_API_KEY"
+
+  # Azure OpenAI
+  azure-gpt-4:
+    provider: azure
+    deployment_name: "YOUR_DEPLOYMENT_NAME"
+    azure_endpoint: "YOUR_AZURE_ENDPOINT"
+    api_version: "2024-02-01"
+    api_key: "YOUR_AZURE_API_KEY"
+
+  # Google Gemini
+  gemini-1.5-pro:
+    provider: gemini
+    model_name: "gemini-1.5-pro-latest"
+    api_key: "YOUR_GOOGLE_API_KEY"
+```
+
+### 2.3. `LLMManager` の役割
+
+`LLMManager` は、設定ファイルに基づいて適切なLangChainの `Chat` モデル（`ChatOllama`, `ChatOpenAI`, `AzureChatOpenAI`, `ChatGoogleGenerativeAI`）を動的にインスタンス化します。一度インスタンス化されたモデルはキャッシュされ、アプリケーション全体で再利用されるため、効率的なリソース管理が実現されます。
+
+このアーキテクチャにより、新しいLLMプロバイダーの追加も容易になっています。`LLMManager` に新しいプロバイダーのロジックを追加し、設定モデルを更新するだけで、システム全体で新しいLLMが利用可能になります。
+
 ## 3. RAG戦略詳解
 
 `RetrieverManager`は、`config/strategies.yaml` の設定に基づき、要求されたRAG戦略を動的に構築します。以下に各戦略の実装詳細と考慮事項を記述します。

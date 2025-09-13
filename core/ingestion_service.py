@@ -2,17 +2,53 @@ from langchain_community.document_loaders import PyPDFLoader, TextLoader, Unstru
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from typing import List
 import uuid
+import time
 
 from .vector_store_manager import vector_store_manager
-from langchain_core.documents import Document
+from .config_manager import config_manager
 from backend import crud
 from backend.database import SessionLocal
 
+class EmbeddingServiceError(Exception):
+    """Raised when the embedding service (e.g. Ollama) is unreachable or fails."""
+
+
 class IngestionService:
     def __init__(self):
-        self.text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-        self.parent_splitter = RecursiveCharacterTextSplitter(chunk_size=2000, chunk_overlap=200)
-        self.child_splitter = RecursiveCharacterTextSplitter(chunk_size=400, chunk_overlap=100)
+        # Defaults (kept for backward compatibility)
+        default_chunk_size = 1000
+        default_chunk_overlap = 200
+        default_parent_chunk_size = 2000
+        default_parent_chunk_overlap = 200
+        default_child_chunk_size = 400
+        default_child_chunk_overlap = 100
+
+        # Attempt to read retriever parameters from configuration (if provided)
+        try:
+            retriever_cfg = config_manager.get_retriever_config('basic')
+            params = retriever_cfg.parameters or {}
+            chunk_size = int(params.get('chunk_size', default_chunk_size))
+            chunk_overlap = int(params.get('chunk_overlap', default_chunk_overlap))
+        except Exception:
+            chunk_size = default_chunk_size
+            chunk_overlap = default_chunk_overlap
+
+        try:
+            parent_cfg = config_manager.get_retriever_config('parent_document')
+            pparams = parent_cfg.parameters or {}
+            parent_chunk_size = int(pparams.get('parent_chunk_size', default_parent_chunk_size))
+            parent_chunk_overlap = int(pparams.get('parent_chunk_overlap', default_parent_chunk_overlap))
+            child_chunk_size = int(pparams.get('child_chunk_size', default_child_chunk_size))
+            child_chunk_overlap = int(pparams.get('child_chunk_overlap', default_child_chunk_overlap))
+        except Exception:
+            parent_chunk_size = default_parent_chunk_size
+            parent_chunk_overlap = default_parent_chunk_overlap
+            child_chunk_size = default_child_chunk_size
+            child_chunk_overlap = default_child_chunk_overlap
+
+        self.text_splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+        self.parent_splitter = RecursiveCharacterTextSplitter(chunk_size=parent_chunk_size, chunk_overlap=parent_chunk_overlap)
+        self.child_splitter = RecursiveCharacterTextSplitter(chunk_size=child_chunk_size, chunk_overlap=child_chunk_overlap)
 
     def ingest_file(self, file_path: str, file_type: str, data_source_id: int, dataset_id: int, user_id: int, strategy: str = "basic"):
         """
@@ -42,7 +78,21 @@ class IngestionService:
             })
 
         collection_name = self._get_collection_name(user_id)
-        vector_store_manager.add_documents(collection_name, chunks)
+
+        # Try to add documents with retry/backoff to tolerate temporary embedding service failures
+        max_retries = 3
+        delay = 1
+        for attempt in range(1, max_retries + 1):
+            try:
+                vector_store_manager.add_documents(collection_name, chunks)
+                break
+            except Exception as e:
+                # If last attempt, raise a domain-specific error for the caller to translate to HTTP 503
+                if attempt == max_retries:
+                    raise EmbeddingServiceError(f"failed to add documents after {max_retries} attempts: {e}")
+                # otherwise wait and retry
+                time.sleep(delay)
+                delay *= 2
 
     def _ingest_for_parent_document(self, file_path: str, file_type: str, data_source_id: int, dataset_id: int, user_id: int):
         """Ingestion process for the ParentDocumentRetriever."""
@@ -76,7 +126,18 @@ class IngestionService:
                 child_docs.extend(sub_docs)
 
             collection_name = self._get_collection_name(user_id)
-            vector_store_manager.add_documents(collection_name, child_docs)
+            # Same retry/backoff strategy for parent/child ingestion
+            max_retries = 3
+            delay = 1
+            for attempt in range(1, max_retries + 1):
+                try:
+                    vector_store_manager.add_documents(collection_name, child_docs)
+                    break
+                except Exception as e:
+                    if attempt == max_retries:
+                        raise EmbeddingServiceError(f"failed to add documents after {max_retries} attempts: {e}")
+                    time.sleep(delay)
+                    delay *= 2
         finally:
             db.close()
 

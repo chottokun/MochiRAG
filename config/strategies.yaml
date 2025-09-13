@@ -1,5 +1,19 @@
 # Configuration for MochiRAG models and strategies
 
+# Vector Store Configuration
+# Configure the vector store used by the application.
+# `provider`: Currently only 'chromadb' is supported.
+# `mode`: 'persistent' for local file-based storage, 'http' for client-server mode.
+# `host`: The hostname of the ChromaDB server (only for 'http' mode).
+# `port`: The port of the ChromaDB server (only for 'http' mode).
+# `path`: The local directory to store database files (only for 'persistent' mode).
+vector_store:
+  provider: chromadb
+  mode: http # 'persistent # Can be 'persistent' or 'http'
+  host: localhost
+  port: 8001  # Changed to 8001 to avoid conflict with backend uvicorn (8000)
+  path: "chroma_db"
+
 # Embedding models configuration
 embeddings:
   # Default model for embedding text. Excellent performance for its size.
@@ -16,6 +30,32 @@ llms:
     model_name: "gemma3:4b-it-qat" # Using a standard name, as gemma3:4b-it-qat might be custom
     base_url: "http://localhost:11434"
 
+  # --- OpenAI Configuration ---
+  # Replace with your actual OpenAI model and API key
+  gpt-4o:
+    provider: openai
+    model_name: "gpt-4o"
+    api_key: "YOUR_OPENAI_API_KEY" # Replace with your key or set OPENAI_API_KEY environment variable
+    temperature: 0.7
+
+  # --- Azure OpenAI Configuration ---
+  # Replace with your Azure deployment details
+  azure-gpt-4:
+    provider: azure
+    deployment_name: "YOUR_DEPLOYMENT_NAME"
+    azure_endpoint: "YOUR_AZURE_ENDPOINT" # e.g., https://your-resource.openai.azure.com/
+    api_version: "2024-02-01"
+    api_key: "YOUR_AZURE_API_KEY" # Replace with your key or set AZURE_OPENAI_API_KEY environment variable
+    temperature: 0.7
+
+  # --- Google Gemini Configuration ---
+  # Replace with your Gemini model and API key
+  gemini-1.5-pro:
+    provider: gemini
+    model_name: "gemini-1.5-pro-latest"
+    api_key: "YOUR_GOOGLE_API_KEY" # Replace with your key or set GOOGLE_API_KEY environment variable
+    temperature: 0.7
+
 # Retriever strategies configuration
 retrievers:
   # Configuration for the basic semantic search
@@ -24,6 +64,13 @@ retrievers:
     description: "A standard vector similarity search."
     parameters:
       k: 5 # Number of documents to retrieve
+      # Text splitting (chunking) controls used when ingesting documents for this retriever.
+      # You can tune these to balance retrieval granularity vs. context size.
+      # - chunk_size: approx. characters per chunk (default shown here)
+      # - chunk_overlap: characters overlap between adjacent chunks
+      # Example (defaults):
+      chunk_size: 1000
+      chunk_overlap: 200
   multiquery:
     strategy_class: "MultiQueryRetrieverStrategy"
     description: "Generates multiple queries from different perspectives for a given user question."
@@ -36,8 +83,13 @@ retrievers:
     strategy_class: "ParentDocumentRetrieverStrategy"
     description: "Retrieves smaller chunks of documents and returns the parent document."
     parameters:
+      # Parent/child chunking controls. Parent chunks are larger documents
+      # that will be returned to the LLM, while child chunks are the
+      # smaller indexed chunks used for retrieval.
       parent_chunk_size: 2000
+      parent_chunk_overlap: 200
       child_chunk_size: 400
+      child_chunk_overlap: 100
   deeprag:
     strategy_class: "DeepRAGStrategy"
     description: "Decomposes complex questions into a series of simpler subqueries to build a comprehensive answer."

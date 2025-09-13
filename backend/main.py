@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from typing import List
 import shutil
 import os
+from uuid import uuid4
 from contextlib import asynccontextmanager
 
 from . import crud, models, schemas, security
@@ -11,6 +12,7 @@ from .database import SessionLocal, engine
 from core.ingestion_service import ingestion_service
 from core.rag_chain_service import rag_chain_service
 from core.vector_store_manager import vector_store_manager
+from core.ingestion_service import EmbeddingServiceError
 
 # Create all database tables on startup
 models.Base.metadata.create_all(bind=engine)
@@ -166,13 +168,17 @@ def upload_documents_to_dataset(
                 owner_id=current_user.id, 
                 file_path=file_path
             )
-            ingestion_service.ingest_file(
-                file_path=file_path,
-                file_type=file.content_type,
-                data_source_id=db_data_source.id,
-                dataset_id=dataset_id,
-                user_id=current_user.id
-            )
+            try:
+                ingestion_service.ingest_file(
+                    file_path=file_path,
+                    file_type=file.content_type,
+                    data_source_id=db_data_source.id,
+                    dataset_id=dataset_id,
+                    user_id=current_user.id
+                )
+            except EmbeddingServiceError as ese:
+                # Return a 503 Service Unavailable with a clear message
+                raise HTTPException(status_code=503, detail=str(ese))
             data_sources.append(db_data_source)
         finally:
             if os.path.exists(file_path):
