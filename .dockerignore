@@ -1,0 +1,99 @@
+# Docker ignore file
+
+# Git
+.git/
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Logs and databases
+*.log
+*.sqlite3
+*.sqlite3-journal
+pip-log.txt
+pip-delete-this-directory.txt
+celerybeat-schedule
+celerybeat.pid
+
+# Test and coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Translations
+*.mo
+*.pot
+
+# Environment
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak
+venv.bak
+
+# IDE and editor specific
+.vscode/
+.idea/
+.spyderproject
+.spyproject
+.ropeproject
+
+# Documentation
+docs/
+site/
+# Markdown files are documentation
+*.md
+
+# MochiRAG specific
+chroma_db/
+temp_uploads/
+shared_samples/
+
+# Other
+.ipynb_checkpoints
+profile_default/
+ipython_config.py
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+cython_debug/
