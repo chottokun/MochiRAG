@@ -1,0 +1,8 @@
+[
+  {
+    "id": -1,
+    "name": "Shared PDF DB",
+    "description": "Shared database created from 'shared_samples'",
+    "collection_name": "shared_shared_pdf_db"
+  }
+]
