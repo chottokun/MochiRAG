@@ -90,6 +90,15 @@ retrievers:
       parent_chunk_overlap: 200
       child_chunk_size: 400
       child_chunk_overlap: 100
+  hyde:
+    strategy_class: "HydeRetrieverStrategy"
+    description: "Generates a hypothetical document from the query and uses it for retrieval."
+    parameters:
+      k: 5
+  step_back:
+    strategy_class: "StepBackPromptingRetrieverStrategy"
+    description: "Generates a more general 'step-back' question to improve retrieval for broad queries."
+    parameters: {}
   deeprag:
     strategy_class: "DeepRAGStrategy"
     description: "Decomposes complex questions into a series of simpler subqueries to build a comprehensive answer."

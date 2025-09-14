@@ -1,12 +1,19 @@
 from abc import ABC, abstractmethod
-from typing import List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from langchain_core.documents import Document
-from langchain_core.retrievers import BaseRetriever
-from langchain.retrievers import MultiQueryRetriever, ContextualCompressionRetriever
+from langchain.chains import LLMChain
+from langchain.retrievers import (ContextualCompressionRetriever,
+                                  MultiQueryRetriever)
 from langchain.retrievers.document_compressors import LLMChainExtractor
-from langchain_core.stores import BaseStore
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.retrievers import HydeRetriever
+from langchain_core.callbacks import CallbackManagerForRetrieverRun
+from langchain_core.documents import Document
+from langchain_core.prompts import PromptTemplate
+from langchain_core.retrievers import BaseRetriever
+from langchain_core.runnables import Runnable
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.stores import BaseStore
 from langchain.retrievers import ParentDocumentRetriever as LangchainParentDocumentRetriever
 
 from backend import crud
@@ -107,6 +114,120 @@ class ParentDocumentRetrieverStrategy(RetrieverStrategy):
             child_splitter=child_splitter,
             parent_splitter=parent_splitter,
         )
+
+
+class CustomHydeRetriever(HydeRetriever):
+    """
+    Custom HydeRetriever that supports filtering for multi-tenant vector stores.
+    """
+    search_kwargs: Dict[str, Any] = {}
+
+    def _get_relevant_documents(
+        self, query: str, *, run_manager: CallbackManagerForRetrieverRun
+    ) -> List[Document]:
+        """
+        Generates a hypothetical document and retrieves relevant documents
+        from the vector store, applying configured search filters.
+        """
+        if self.prompt_key is None:
+            result = self.llm_chain.invoke(
+                {self.llm_chain.input_keys[0]: query},
+                config={"callbacks": run_manager.get_child()},
+            )
+            hypothetical_document = result[self.llm_chain.output_key]
+        else:
+            hypothetical_document = self.llm_chain.prompt.format(**{self.prompt_key: query})
+
+        embedding = self.vectorstore.embeddings.embed_query(hypothetical_document)
+
+        # Pass the stored search_kwargs to the search function
+        return self.vectorstore.similarity_search_by_vector(
+            embedding, **self.search_kwargs
+        )
+
+
+class HydeRetrieverStrategy(RetrieverStrategy):
+    def get_retriever(self, user_id: int, dataset_ids: Optional[List[int]] = None) -> BaseRetriever:
+        collection_name = f"user_{user_id}"
+        vector_store = vector_store_manager.get_vector_store(collection_name)
+        llm = llm_manager.get_llm()
+
+        filter_dict = {"user_id": user_id}
+        if dataset_ids:
+            filter_dict = {"$and": [
+                {"user_id": user_id},
+                {"dataset_id": {"$in": dataset_ids}}
+            ]}
+
+        config = config_manager.get_retriever_config("hyde")
+        search_kwargs = {
+            "k": config.parameters.get("k", 5),
+            "filter": filter_dict
+        }
+
+        template = """Please write a passage to answer the question.
+Question: {question}
+Passage:"""
+        prompt = PromptTemplate.from_template(template)
+        llm_chain = LLMChain(llm=llm, prompt=prompt)
+
+        return CustomHydeRetriever(
+            vectorstore=vector_store,
+            llm_chain=llm_chain,
+            search_kwargs=search_kwargs,
+        )
+
+
+class StepBackRetriever(BaseRetriever):
+    """
+    Custom retriever that performs the step-back prompting technique.
+    It wraps a standard retriever and uses an LLM to generate a more
+    general question to improve document retrieval.
+    """
+    retriever: BaseRetriever
+    question_gen_chain: Runnable
+
+    def _get_relevant_documents(
+        self, query: str, *, run_manager: CallbackManagerForRetrieverRun
+    ) -> List[Document]:
+        """
+        Generates a step-back question and uses the underlying retriever
+        to fetch documents based on it.
+        """
+        # Generate the step-back question
+        step_back_query = self.question_gen_chain.invoke(
+            {"question": query},
+            config={"callbacks": run_manager.get_child()}
+        )
+
+        # Retrieve documents using the new question
+        documents = self.retriever.get_relevant_documents(
+            step_back_query,
+            callbacks=run_manager.get_child()
+        )
+        return documents
+
+
+class StepBackPromptingRetrieverStrategy(RetrieverStrategy):
+    def get_retriever(self, user_id: int, dataset_ids: Optional[List[int]] = None) -> BaseRetriever:
+        # Use the basic retriever as the underlying search mechanism
+        base_retriever = BasicRetrieverStrategy().get_retriever(user_id, dataset_ids)
+        llm = llm_manager.get_llm()
+
+        # Prompt for generating the step-back question
+        template = """You are an expert at world knowledge. I am going to ask you a question. Your job is to formulate a single, more general question that captures the essence of the original question. Frame the question from the perspective of a historian or a researcher.
+Original question: {question}
+Step-back question:"""
+        prompt = PromptTemplate.from_template(template)
+
+        # Chain to generate the question
+        question_gen_chain = prompt | llm | StrOutputParser()
+
+        return StepBackRetriever(
+            retriever=base_retriever,
+            question_gen_chain=question_gen_chain
+        )
+
 
 import importlib
 import inspect
