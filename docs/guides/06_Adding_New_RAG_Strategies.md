@@ -1,46 +1,41 @@
 # Guide: Adding New RAG Retriever Strategies
 
-This guide explains how to add a new custom retriever strategy to the RAG system. The system is designed to be extensible, allowing developers to easily add new retrieval methods.
+このガイドは、RAGシステムに新しいリトリーバー戦略を追加する手順を示します。日本語の説明に英語のサンプルコードを含みます。
 
-## Overview
+## 概要
 
-The system uses a **Strategy Pattern** to manage different retriever implementations. All retriever strategies are managed by the `RetrieverManager` located in `core/retriever_manager.py`.
+本システムではStrategyパターンを用いて複数のretriever実装を管理しています。すべてのretriever戦略は`core/retriever_manager.py`の`RetrieverManager`によって管理されます。
 
-The manager dynamically loads retriever strategies based on the configuration in `config/strategies.yaml`. This means that to add a new strategy, you only need to:
-1.  Implement the strategy as a new class.
-2.  Declare the strategy in the YAML configuration file.
+設定ファイル`config/strategies.yaml`に基づき戦略が動的にロードされるため、新しい戦略を追加するには次の2つだけです。
+1. 新しい戦略クラスを実装する。
+2. YAML設定にその戦略を登録する。
 
-The application will automatically detect and load the new strategy at startup.
+アプリケーションを再起動すると自動的に新しい戦略が検出され、利用可能になります。
 
-## Step 1: Implement the Strategy Class
+## ステップ1: 戦略クラスを実装する
 
-All retriever strategy classes must inherit from the `RetrieverStrategy` abstract base class and implement the `get_retriever` method. These classes are located in `core/retriever_manager.py`.
+retriever戦略クラスはすべて`RetrieverStrategy`（抽象クラス）を継承し、`get_retriever`メソッドを実装する必要があります。通常、これらのクラスは`core/retriever_manager.py`に置きます。
 
-### Requirements:
--   **Class Location**: The new class must be added to `core/retriever_manager.py`.
--   **Inheritance**: Must inherit from `RetrieverStrategy`.
--   **Method**: Must implement `get_retriever(self, user_id: int, dataset_ids: Optional[List[int]] = None) -> BaseRetriever`.
+### 要件
+- クラスは `core/retriever_manager.py` に追加すること。
+- `RetrieverStrategy` を継承すること。
+- 次のシグネチャのメソッドを実装すること: `get_retriever(self, user_id: int, dataset_ids: Optional[List[int]] = None) -> BaseRetriever`
 
-### Example:
-Here is an example of a simple custom retriever strategy. You can add this class to the `core/retriever_manager.py` file.
+### 例
+以下は簡単なTF-IDFベースのretriever戦略の例です（デモ用の簡略実装）。実際の実装ではデータベースからドキュメントを取得する処理が必要です。
 
 ```python
-# In core/retriever_manager.py
-
+# 例: core/retriever_manager.py に追加
 from langchain.retrievers import TFIDFRetriever
-from langchain_core.documents import Document
-
-# ... (add with other strategy classes)
+from langchain.schema import Document
 
 class TfidfRetrieverStrategy(RetrieverStrategy):
     """
-    A simple strategy that uses TF-IDF to retrieve documents.
-    Note: This is a simplified example and assumes documents are available in-memory.
-    A real implementation would need to fetch documents from a database.
+    TF-IDFを用いた簡易retriever戦略の例。
+    実運用ではユーザーやデータセットに紐づくドキュメントをDBから取得する実装が必要です。
     """
     def get_retriever(self, user_id: int, dataset_ids: Optional[List[int]] = None) -> BaseRetriever:
-        # NOTE: This is a mock implementation for demonstration purposes.
-        # A real-world scenario would involve fetching documents for the user/dataset.
+        # デモ用のモック実装
         mock_documents = [
             Document(page_content="Mochi is a Japanese rice cake made of mochigome."),
             Document(page_content="Software engineering is a systematic approach to software development."),
@@ -51,35 +46,31 @@ class TfidfRetrieverStrategy(RetrieverStrategy):
             documents=mock_documents,
             k=3
         )
-
 ```
 
-## Step 2: Configure the Strategy in YAML
+## ステップ2: YAMLで戦略を登録する
 
-After implementing the class, you need to register it in the `config/strategies.yaml` file under the `retrievers` section.
+クラスを実装したら、`config/strategies.yaml` の `retrievers` セクションにエントリを追加して登録します。
 
-### Requirements:
--   Add a new key with the desired strategy name (e.g., `tfidf_retriever`).
--   Specify the `strategy_class` key with the exact name of the class you created.
--   Provide a `description` and any necessary `parameters`.
+### 要件
+- `tfidf_retriever` のようなキー名で新しいエントリを追加すること。
+- `strategy_class` に作成したクラス名を指定すること。
+- `description` や必要な `parameters` を追加すること。
 
-### Example:
-Add the following to `config/strategies.yaml`:
+### 例
+`config/strategies.yaml` に次を追加します:
 
 ```yaml
-# In config/strategies.yaml, under the 'retrievers' section
-
-  # ... (other retrievers)
+# config/strategies.yaml の 'retrievers' セクション内
 
   tfidf_retriever:
     strategy_class: "TfidfRetrieverStrategy"
     description: "A simple TF-IDF based retriever for demonstration."
     parameters: {}
-
 ```
 
-## Step 3: Verification
+## ステップ3: 検証
 
-Once you have completed the two steps above, restart the application. The new strategy, "tfidf_retriever", will automatically appear in the "Select RAG Strategy" dropdown in the chat interface.
+上記の変更を行ったらアプリケーションを再起動してください。チャット画面の「Select RAG Strategy」ドロップダウンに新しい戦略（この例では `tfidf_retriever`）が表示されるはずです。
 
-The `RetrieverManager` handles the loading and instantiation of the new strategy class, making it available for use throughout the application.
+`RetrieverManager` が戦略のロードとインスタンス化を管理します。
