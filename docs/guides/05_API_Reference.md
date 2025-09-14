@@ -1,5 +1,47 @@
 # MochiRAG APIリファレンス
 
+## データセット (Datasets)
+
+### データセット一覧の取得
+- **`GET /users/me/datasets/`**
+  - **説明:** ユーザーが利用可能なデータセットの一覧を取得します。これには、ユーザー自身のパーソナルデータベースと、システム全体で利用可能なすべての共有データベースが含まれます。
+  - **成功レスポンス (200 OK):**
+    ```json
+    [
+      {
+        "name": "My Personal DB",
+        "description": "A personal database.",
+        "id": 1,
+        "owner_id": 1,
+        "data_sources": []
+      },
+      {
+        "name": "Common Test DB",
+        "description": "A shared database for testing purposes.",
+        "id": -1,
+        "owner_id": -1,
+        "data_sources": []
+      }
+    ]
+    ```
+
+### データセットの作成
+- **`POST /users/me/datasets/`**
+  - **説明:** 新しいパーソナルデータセットを作成します。
+  - **リクエストボディ:**
+    ```json
+    {
+      "name": "New Dataset Name",
+      "description": "Optional description for the dataset."
+    }
+    ```
+  - **成功レスポンス (201 Created):** 作成されたデータセットのオブジェクト。
+
+### データセットの削除
+- **`DELETE /users/me/datasets/{dataset_id}`**
+  - **説明:** 指定したIDのパーソナルデータセットを削除します。
+  - **成功レスポンス (200 OK):** 削除されたデータセットのオブジェクト。
+
 （...既存のセクションは省略...）
 
 ## 7. エラーレスポンス
