@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from typing import List
 import shutil
 import os
+import json
 from uuid import uuid4
 from contextlib import asynccontextmanager
 
@@ -83,7 +84,34 @@ def create_dataset_for_user(dataset: schemas.DatasetCreate, current_user: models
 
 @app.get("/users/me/datasets/", response_model=List[schemas.Dataset])
 def read_datasets_for_user(skip: int = 0, limit: int = 100, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
-    return crud.get_datasets_by_user(db, owner_id=current_user.id, skip=skip, limit=limit)
+    # 1. Get personal datasets from the database
+    personal_datasets = crud.get_datasets_by_user(db, owner_id=current_user.id, skip=skip, limit=limit)
+
+    # 2. Load shared datasets from the JSON file
+    shared_datasets = []
+    try:
+        with open("shared_dbs.json", "r") as f:
+            shared_dbs_data = json.load(f)
+            for item in shared_dbs_data:
+                # Adapt the dictionary from JSON to match the schemas.Dataset structure
+                shared_datasets.append(
+                    schemas.Dataset(
+                        id=item["id"],
+                        name=item["name"],
+                        description=item.get("description"),
+                        owner_id=-1,  # Use a placeholder for shared datasets
+                        data_sources=[] # Shared DBs don't have associated data sources in the SQL DB
+                    )
+                )
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        # If the file doesn't exist or is invalid, just log it and continue.
+        # In a real application, you'd use a proper logger.
+        print(f"Could not load shared datasets: {e}")
+
+    # 3. Combine and return both lists
+    # Note: The response_model will correctly serialize both the ORM models from `personal_datasets`
+    # and the Pydantic models in `shared_datasets`.
+    return personal_datasets + shared_datasets
 
 @app.delete("/users/me/datasets/{dataset_id}", response_model=schemas.Dataset)
 def delete_dataset_for_user(dataset_id: int, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -270,11 +298,13 @@ def delete_document_from_dataset(
 
     return deleted_doc
 
+from core.config_manager import config_manager
+
 @app.get("/chat/strategies/")
 def get_available_rag_strategies():
-    """Returns a list of available RAG strategies from the retriever manager."""
-    from core.retriever_manager import retriever_manager
-    return {"strategies": list(retriever_manager.strategies.keys())}
+    """Returns a list of available RAG strategies from the config."""
+    retriever_configs = config_manager.config.retrievers
+    return {"strategies": list(retriever_configs.keys())}
 
 @app.post("/chat/query/", response_model=schemas.QueryResponse)
 def query_rag_chain(

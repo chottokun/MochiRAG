@@ -214,3 +214,10 @@ data/
 
 chroma_db
 mochirag.db
+
+# Shared samples
+shared_samples/
+test.txt
+
+# Generated shared DB config
+shared_dbs.json

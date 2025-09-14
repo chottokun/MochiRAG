@@ -154,4 +154,53 @@ class IngestionService:
     def _get_collection_name(self, user_id: int) -> str:
         return f"user_{user_id}"
 
+    def ingest_documents_for_shared_db(self, file_paths: List[str], collection_name: str, dataset_id: int):
+        """
+        Ingests a list of documents into a specified collection for a shared database.
+        This method is designed for CLI use and does not tie data to a specific user.
+        """
+        all_chunks = []
+        for file_path in file_paths:
+            # Simple file type detection based on extension
+            if file_path.endswith(".pdf"):
+                loader = PyPDFLoader(file_path)
+            elif file_path.endswith(".txt"):
+                loader = TextLoader(file_path)
+            elif file_path.endswith(".md"):
+                loader = UnstructuredMarkdownLoader(file_path)
+            else:
+                print(f"Skipping unsupported file type: {file_path}")
+                continue
+
+            docs = loader.load()
+            chunks = self.text_splitter.split_documents(docs)
+
+            for chunk in chunks:
+                chunk.metadata.update({
+                    "data_source_id": -1,  # Placeholder for shared DBs
+                    "dataset_id": dataset_id,
+                    "user_id": -1,  # Placeholder for shared DBs
+                    "original_filename": chunk.metadata.get("source", file_path).split('/')[-1]
+                })
+            all_chunks.extend(chunks)
+
+        if not all_chunks:
+            print("No documents were processed.")
+            return
+
+        # Use the same retry logic as the user-specific ingestion
+        max_retries = 3
+        delay = 1
+        for attempt in range(1, max_retries + 1):
+            try:
+                vector_store_manager.add_documents(collection_name, all_chunks)
+                print(f"Successfully added {len(all_chunks)} chunks to collection '{collection_name}'.")
+                break
+            except Exception as e:
+                if attempt == max_retries:
+                    raise EmbeddingServiceError(f"Failed to add documents after {max_retries} attempts: {e}")
+                time.sleep(delay)
+                delay *= 2
+
+
 ingestion_service = IngestionService()

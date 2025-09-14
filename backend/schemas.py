@@ -62,10 +62,15 @@ class TokenData(BaseModel):
 
 # --- Chat Schemas ---
 
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
 class QueryRequest(BaseModel):
     query: str
     strategy: str = "basic"
     dataset_ids: Optional[List[int]] = None
+    history: Optional[List[ChatMessage]] = None
 
 class Source(BaseModel):
     page_content: str

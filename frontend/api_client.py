@@ -105,13 +105,16 @@ class ApiClient:
         response.raise_for_status()
         return response.json().get("strategies", [])
 
-    def query_rag(self, query: str, dataset_ids: List[int], strategy: str) -> Dict[str, Any]:
+    def query_rag(self, query: str, dataset_ids: List[int], strategy: str, history: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
         headers = self._get_auth_headers()
         payload = {
             "query": query,
             "dataset_ids": dataset_ids,
             "strategy": strategy,
         }
+        if history:
+            payload["history"] = history
+
         response = self.client.post(
             f"{self.base_url}/chat/query/",
             json=payload,

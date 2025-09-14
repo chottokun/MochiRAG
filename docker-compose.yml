@@ -52,6 +52,7 @@ services:
       - BACKEND_URL=http://backend:8000
     volumes:
       - ./frontend:/app/frontend
+      - ./shared_dbs.json:/app/shared_dbs.json
 
 # Optional: add a network (defaults are fine)
 networks: {}
