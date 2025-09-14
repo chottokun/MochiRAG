@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Sequence, Tuple
+import json
 
 from langchain.chains import LLMChain
 from langchain.retrievers import (ContextualCompressionRetriever,
@@ -62,16 +63,52 @@ class RetrieverStrategy(ABC):
 class BasicRetrieverStrategy(RetrieverStrategy):
     def get_retriever(self, user_id: int, dataset_ids: Optional[List[int]] = None) -> BaseRetriever:
         config = config_manager.get_retriever_config("basic")
+        
         collection_name = f"user_{user_id}"
-        vector_store = vector_store_manager.get_vector_store(collection_name)
-
         filter = {"user_id": user_id}
-        if dataset_ids:
-            filter = {"$and": [
-                {"user_id": user_id},
-                {"dataset_id": {"$in": dataset_ids}}
-            ]}
 
+        # Check if a shared DB is selected
+        shared_db_id = None
+        if dataset_ids:
+            for ds_id in dataset_ids:
+                if ds_id < 0:
+                    shared_db_id = ds_id
+                    break  # Use the first shared DB found
+
+        if shared_db_id is not None:
+            # Logic for shared DB
+            try:
+                with open("shared_dbs.json", "r") as f:
+                    shared_dbs = json.load(f)
+                
+                target_db = next((db for db in shared_dbs if db["id"] == shared_db_id), None)
+                
+                if target_db:
+                    collection_name = target_db["collection_name"]
+                    # Filter by the specific shared dataset_id, user_id is not used
+                    filter = {"dataset_id": shared_db_id}
+                else:
+                    # If the shared DB ID is not found, return a retriever that finds nothing
+                    # This is a safe fallback
+                    empty_vs = vector_store_manager.get_vector_store(f"user_{user_id}") # Dummy collection
+                    return empty_vs.as_retriever(search_kwargs={"k": 0})
+
+            except (FileNotFoundError, json.JSONDecodeError):
+                # If config is missing/invalid, return a retriever that finds nothing
+                empty_vs = vector_store_manager.get_vector_store(f"user_{user_id}") # Dummy collection
+                return empty_vs.as_retriever(search_kwargs={"k": 0})
+        
+        else:
+            # Logic for user's personal DBs (existing logic)
+            if dataset_ids:
+                filter = {
+                    "$and": [
+                        {"user_id": user_id},
+                        {"dataset_id": {"$in": dataset_ids}},
+                    ]
+                }
+
+        vector_store = vector_store_manager.get_vector_store(collection_name)
         return vector_store.as_retriever(
             search_kwargs={
                 "k": config.parameters.get("k", 5),
@@ -118,26 +155,55 @@ class ParentDocumentRetrieverStrategy(RetrieverStrategy):
 
 class HydeRetrieverStrategy(RetrieverStrategy):
     def get_retriever(self, user_id: int, dataset_ids: Optional[List[int]] = None) -> BaseRetriever:
+        config = config_manager.get_retriever_config("hyde")
+        
         collection_name = f"user_{user_id}"
+        filter_dict = {"user_id": user_id}
+
+        # Check if a shared DB is selected
+        shared_db_id = None
+        if dataset_ids:
+            for ds_id in dataset_ids:
+                if ds_id < 0:
+                    shared_db_id = ds_id
+                    break
+
+        if shared_db_id is not None:
+            # Logic for shared DB
+            try:
+                with open("shared_dbs.json", "r") as f:
+                    shared_dbs = json.load(f)
+                
+                target_db = next((db for db in shared_dbs if db["id"] == shared_db_id), None)
+                
+                if target_db:
+                    collection_name = target_db["collection_name"]
+                    filter_dict = {"dataset_id": shared_db_id}
+                else:
+                    empty_vs = vector_store_manager.get_vector_store(f"user_{user_id}")
+                    return empty_vs.as_retriever(search_kwargs={"k": 0})
+
+            except (FileNotFoundError, json.JSONDecodeError):
+                empty_vs = vector_store_manager.get_vector_store(f"user_{user_id}")
+                return empty_vs.as_retriever(search_kwargs={"k": 0})
+        
+        else:
+            # Logic for user's personal DBs
+            if dataset_ids:
+                filter_dict = {
+                    "$and": [
+                        {"user_id": user_id},
+                        {"dataset_id": {"$in": dataset_ids}},
+                    ]
+                }
+
         vector_store = vector_store_manager.get_vector_store(collection_name)
         llm = llm_manager.get_llm()
 
-        filter_dict = {"user_id": user_id}
-        if dataset_ids:
-            filter_dict = {"$and": [
-                {"user_id": user_id},
-                {"dataset_id": {"$in": dataset_ids}}
-            ]}
-
-        config = config_manager.get_retriever_config("hyde")
         search_kwargs = {
             "k": config.parameters.get("k", 5),
             "filter": filter_dict
         }
-
-        # The new approach uses HypotheticalDocumentEmbedder, which is a form of Embeddings.
-        # We create it and temporarily swap it into the vector store to create a retriever
-        # that uses this embedding logic for its queries.
 
         template = """Please write a passage to answer the question.
 Question: {question}
@@ -151,9 +217,6 @@ Passage:"""
             base_embeddings=base_embeddings,
         )
 
-        # This is a bit of a hack, but it's the most straightforward way to use a custom
-        # query embedding function with a standard vector store retriever. We swap the
-        # embeddings, create the retriever, and then swap it back to avoid side effects.
         vector_store.embeddings = hyde_embeddings
         retriever = vector_store.as_retriever(search_kwargs=search_kwargs)
         vector_store.embeddings = base_embeddings # Restore original embeddings

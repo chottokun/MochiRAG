@@ -49,18 +49,7 @@ def create_shared_db(name, source_dir):
 
     click.echo(f"Found {len(file_paths)} documents to ingest.")
 
-    # 3. Ingest the documents into a new collection
-    collection_name = sanitize_name_for_collection(name)
-    try:
-        ingestion_service.ingest_documents_for_shared_db(file_paths, collection_name)
-    except EmbeddingServiceError as e:
-        click.secho(f"Error during document ingestion: {e}", fg="red")
-        return
-    except Exception as e:
-        click.secho(f"An unexpected error occurred during ingestion: {e}", fg="red")
-        return
-
-    # 4. Update the shared_dbs.json file
+    # 3. Determine the new DB ID and prepare the entry
     shared_dbs_path = "shared_dbs.json"
     try:
         if os.path.exists(shared_dbs_path):
@@ -69,18 +58,31 @@ def create_shared_db(name, source_dir):
         else:
             shared_dbs = []
 
-        # Check for existing name
         if any(db["name"] == name for db in shared_dbs):
             click.secho(f"Error: A shared database with the name '{name}' already exists.", fg="red")
-            click.echo("Aborting without changing configuration. The vector data may have been created.")
             return
 
-        # Determine the next available negative ID
         next_id = -1
         if shared_dbs:
-            # Find the minimum ID (most negative) and go one lower
             next_id = min(db.get("id", 0) for db in shared_dbs) - 1
 
+    except Exception as e:
+        click.secho(f"Error reading or parsing '{shared_dbs_path}': {e}", fg="red")
+        return
+
+    # 4. Ingest the documents with the new ID
+    collection_name = sanitize_name_for_collection(name)
+    try:
+        ingestion_service.ingest_documents_for_shared_db(file_paths, collection_name, dataset_id=next_id)
+    except EmbeddingServiceError as e:
+        click.secho(f"Error during document ingestion: {e}", fg="red")
+        return
+    except Exception as e:
+        click.secho(f"An unexpected error occurred during ingestion: {e}", fg="red")
+        return
+
+    # 5. Update the shared_dbs.json file
+    try:
         new_db_entry = {
             "id": next_id,
             "name": name,
