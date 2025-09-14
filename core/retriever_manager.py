@@ -6,7 +6,7 @@ from langchain.retrievers import (ContextualCompressionRetriever,
                                   MultiQueryRetriever)
 from langchain.retrievers.document_compressors import LLMChainExtractor
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.retrievers import HydeRetriever
+from langchain.embeddings import HypotheticalDocumentEmbedder
 from langchain_core.callbacks import CallbackManagerForRetrieverRun
 from langchain_core.documents import Document
 from langchain_core.prompts import PromptTemplate
@@ -116,36 +116,6 @@ class ParentDocumentRetrieverStrategy(RetrieverStrategy):
         )
 
 
-class CustomHydeRetriever(HydeRetriever):
-    """
-    Custom HydeRetriever that supports filtering for multi-tenant vector stores.
-    """
-    search_kwargs: Dict[str, Any] = {}
-
-    def _get_relevant_documents(
-        self, query: str, *, run_manager: CallbackManagerForRetrieverRun
-    ) -> List[Document]:
-        """
-        Generates a hypothetical document and retrieves relevant documents
-        from the vector store, applying configured search filters.
-        """
-        if self.prompt_key is None:
-            result = self.llm_chain.invoke(
-                {self.llm_chain.input_keys[0]: query},
-                config={"callbacks": run_manager.get_child()},
-            )
-            hypothetical_document = result[self.llm_chain.output_key]
-        else:
-            hypothetical_document = self.llm_chain.prompt.format(**{self.prompt_key: query})
-
-        embedding = self.vectorstore.embeddings.embed_query(hypothetical_document)
-
-        # Pass the stored search_kwargs to the search function
-        return self.vectorstore.similarity_search_by_vector(
-            embedding, **self.search_kwargs
-        )
-
-
 class HydeRetrieverStrategy(RetrieverStrategy):
     def get_retriever(self, user_id: int, dataset_ids: Optional[List[int]] = None) -> BaseRetriever:
         collection_name = f"user_{user_id}"
@@ -165,17 +135,30 @@ class HydeRetrieverStrategy(RetrieverStrategy):
             "filter": filter_dict
         }
 
+        # The new approach uses HypotheticalDocumentEmbedder, which is a form of Embeddings.
+        # We create it and temporarily swap it into the vector store to create a retriever
+        # that uses this embedding logic for its queries.
+
         template = """Please write a passage to answer the question.
 Question: {question}
 Passage:"""
         prompt = PromptTemplate.from_template(template)
         llm_chain = LLMChain(llm=llm, prompt=prompt)
 
-        return CustomHydeRetriever(
-            vectorstore=vector_store,
+        base_embeddings = vector_store.embeddings
+        hyde_embeddings = HypotheticalDocumentEmbedder(
             llm_chain=llm_chain,
-            search_kwargs=search_kwargs,
+            base_embeddings=base_embeddings,
         )
+
+        # This is a bit of a hack, but it's the most straightforward way to use a custom
+        # query embedding function with a standard vector store retriever. We swap the
+        # embeddings, create the retriever, and then swap it back to avoid side effects.
+        vector_store.embeddings = hyde_embeddings
+        retriever = vector_store.as_retriever(search_kwargs=search_kwargs)
+        vector_store.embeddings = base_embeddings # Restore original embeddings
+
+        return retriever
 
 
 class StepBackRetriever(BaseRetriever):
