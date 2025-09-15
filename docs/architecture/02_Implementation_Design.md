@@ -104,63 +104,62 @@ llms:
 
     ### 3.1. BasicRetrieverStrategy (基本戦略)
 
-    - **概要:** 最も基本的な意味検索（セマンティック検索）リトリーバー。
+    - **概要:** 最も基本的なベクトル検索リトリーバー。ユーザーが選択した複数のデータソース（個人用・共有）を横断して同時に検索する能力を持つ。
     - **得意な質問タイプ:** キーワードが明確な質問や、シンプルな事実確認。「MochiRAGの認証方式は？」など。
-    - **長所:** 高速、低コスト、シンプル。
-    - **短所:** 質問のニュアンスを汲み取れないことがある。
+    - **長所:** 高速、低コスト。複数のデータソースを一度に検索できるため、利便性が高い。
+    - **短所:** 質問の解釈は行わないため、単語のニュアンスや背景知識を必要とする検索には不向きな場合がある。
+    - **技術的詳細:** ユーザーが複数のデータソースを選択した場合、内部的にデータソースごとにリトリーバーを生成し、`EnsembleRetriever`を用いてそれらを束ねる。各リトリーバーからの検索結果はReciprocal Rank Fusion (RRF) アルゴリズムによってインテリジェントに統合され、最終的なランキングが決定される。
     - **実装サンプル:**
       ```python
-      def get_retriever(self, vectorstore: VectorStore, user_id: str) -> BaseRetriever:
-          search_kwargs = {"k": 5, "filter": {"user_id": user_id}}
-          return vectorstore.as_retriever(search_kwargs=search_kwargs)
+      # 複数のデータソースIDを受け取り、EnsembleRetrieverを構築するロジック
+      def get_retriever(self, user_id: int, dataset_ids: List[int]) -> BaseRetriever:
+          retrievers = []
+          # ... 個人用データセットからリトリーバーを生成 ...
+          if personal_ids:
+              # ...
+              retrievers.append(personal_retriever)
+
+          # ... 共有データセットからリトリーバーを生成 ...
+          if shared_ids:
+              # ...
+              retrievers.append(shared_retriever)
+
+          # ... リトリーバーが複数あればEnsembleRetrieverを返す ...
+          if len(retrievers) > 1:
+              return EnsembleRetriever(retrievers=retrievers, weights=...)
+
+          return retrievers[0]
       ```
+
 
     --- 
 
-    ### 3.2. EnsembleRetrieverStrategy (RAG-Fusion)
+    ### 3.2. HyDE (Hypothetical Document Embeddings) Strategy
 
-    - **概要:** 複数のリトリーバー（例: キーワード検索とベクトル検索）の結果を、Reciprocal Rank Fusion (RRF) というアルゴリズムで知的に統合し、順位付けし直します。
-    - **得意な質問タイプ:** 固有名詞や専門用語を含む質問。「`ContextualCompressionRetriever`について教えて」のように、キーワード検索と意味検索の両方が有効な場合に精度が向上します。
-    - **長所:** 検索の網羅性と精度が劇的に向上する。
-    - **短所:** 複数のリトリーバーを管理する必要があり、実装の複雑性が増す。
-    - **実装サンプル:**
-      ```python
-      from langchain.retrievers import EnsembleRetriever
-      from langchain_community.retrievers import BM25Retriever
-
-      def get_retriever(self, docs: list, vector_retriever: BaseRetriever) -> BaseRetriever:
-          bm25_retriever = BM25Retriever.from_documents(docs)
-          return EnsembleRetriever(
-              retrievers=[bm25_retriever, vector_retriever],
-              weights=[0.5, 0.5]
-          )
-      ```
-
-    --- 
-
-    ### 3.3. HyDE (Hypothetical Document Embeddings) Strategy
-
-    - **概要:** ユーザーの質問から、まずLLMに「仮説的な回答ドキュメント」を生成させ、その仮説ドキュメントのベクトルを使って検索する手法。
+    - **概要:** ユーザーの質問から、まずLLMに「仮説的な回答ドキュメント」を生成させ、その仮説ドキュメントのベクトルを使って検索する手法。`BasicRetrieverStrategy`と同様に、個人用・共有データを横断した同時検索に対応している。
     - **得意な質問タイプ:** 質問が短すぎる、あるいは抽象的で、検索のヒントが少ない場合。「RAGとは？」のような質問でも、LLMが生成する詳細な仮説ドキュメントによって、関連性の高い文書を見つけやすくなります。
     - **長所:** 検索の再現率（Recall）が向上することがある。
     - **短所:** LLMコールが追加で必要。LLMの生成する仮説が的外れだと、逆にノイズを拾う可能性がある。
+    - **技術的詳細:** この戦略は、データソースごとに`HypotheticalDocumentEmbedder`を持つリトリーバーを生成します。共有されているVectorStoreインスタンスの状態を変更する（副作用）のを避けるため、リトリーバーを生成するたびに、HyDE用の埋め込み関数を持つ一時的な`Chroma`インスタンスを内部で作成しています。これにより、安全な並列検索を実現しています。
     - **実装サンプル:**
       ```python
-      from langchain.chains import LLMChain
-      from langchain_community.retrievers import HydeRetriever
+      # HyDE用のリトリーバーを安全に生成する内部ヘルパーメソッド
+      def create_hyde_retriever(vector_store: Chroma, filter_dict: dict) -> BaseRetriever:
+          # ...
+          hyde_embeddings = HypotheticalDocumentEmbedder(...)
 
-      def get_retriever(self, vectorstore: VectorStore, llm: BaseLanguageModel) -> BaseRetriever:
-          prompt = PromptTemplate(template=... , input_variables=["question"])
-          llm_chain = LLMChain(llm=llm, prompt=prompt)
-          return HydeRetriever(
-              vectorstore=vectorstore,
-              llm_chain=llm_chain,
+          # 一時的なVectorStoreインスタンスを生成して副作用を回避
+          temp_vector_store = Chroma(
+              client=vector_store._client,
+              collection_name=vector_store._collection.name,
+              embedding_function=hyde_embeddings,
           )
+          return temp_vector_store.as_retriever(...)
       ```
 
     --- 
 
-    ### 3.4. StepBackPromptingStrategy
+    ### 3.3. StepBackPromptingStrategy
 
     - **概要:** 複雑な質問に対し、まず一歩引いた抽象的な質問をLLMに生成させ、その質問で大まかなコンテキストを検索。その後、元の具体的な質問で詳細情報を検索する二段階の検索手法。
     - **得意な質問タイプ:** 「`SelfQueryRetriever`は`ParentDocumentRetriever`と比較してどのような利点があるか？」のような、比較や深い分析を求める複雑な質問。
