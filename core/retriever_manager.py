@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 import json
 
 from langchain.chains import LLMChain
+from langchain_chroma import Chroma
 from langchain.retrievers import (ContextualCompressionRetriever,
                                   MultiQueryRetriever)
 from langchain.retrievers.document_compressors import LLMChainExtractor
@@ -217,9 +218,15 @@ Passage:"""
             base_embeddings=base_embeddings,
         )
 
-        vector_store.embeddings = hyde_embeddings
-        retriever = vector_store.as_retriever(search_kwargs=search_kwargs)
-        vector_store.embeddings = base_embeddings # Restore original embeddings
+        # Create a new Chroma instance for the HyDE retriever. This avoids
+        # mutating the original vector_store's read-only properties.
+        hyde_vector_store = Chroma(
+            client=vector_store._client,
+            collection_name=vector_store._collection.name,
+            embedding_function=hyde_embeddings,
+        )
+
+        retriever = hyde_vector_store.as_retriever(search_kwargs=search_kwargs)
 
         return retriever
 
