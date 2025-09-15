@@ -155,5 +155,6 @@ class BasicRetrieverStrategy(RetrieverStrategy):
 
 ## 6. その他の考慮事項
 
-- **他戦略への展開**: `MultiQueryRetrieverStrategy` や `ContextualCompressionRetrieverStrategy` は内部で `BasicRetrieverStrategy` を利用しているため、この修正の恩恵を自動的に受けます。しかし、`HydeRetrieverStrategy` は独自のロジックでリトリーバーを構築しているため、同様の `EnsembleRetriever` を用いた修正が別途必要になります。
+- **他戦略への展開**: `MultiQueryRetrieverStrategy` や `ContextualCompressionRetrieverStrategy` は内部で `BasicRetrieverStrategy` を利用しているため、この修正の恩恵を自動的に受けます。
+    (注: HyDE に関する実装は互換性の問題のため現行コードベースから削除されています。再導入する場合は LangChain のバージョンや Runnable 型互換性に注意してください。)
 - **対象外の戦略**: `ParentDocumentRetrieverStrategy` は、ドキュメントの親子関係を管理するために特殊な `SQLDocStore` を利用しており、構造が大きく異なります。そのため、今回の同時検索機能の実装の対象外とします。
