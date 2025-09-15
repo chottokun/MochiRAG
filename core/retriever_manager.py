@@ -1,6 +1,9 @@
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 import json
+import importlib
+import inspect
+import logging
 
 from langchain.retrievers import EnsembleRetriever
 from langchain.chains import LLMChain
@@ -14,9 +17,6 @@ from langchain_core.documents import Document
 from langchain_core.prompts import PromptTemplate
 from langchain_core.retrievers import BaseRetriever
 from langchain_core.runnables import Runnable
-import importlib
-import inspect
-import logging
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.stores import BaseStore
 from langchain.retrievers import ParentDocumentRetriever as LangchainParentDocumentRetriever
@@ -26,9 +26,8 @@ from backend.database import SessionLocal
 from .config_manager import config_manager
 from .vector_store_manager import vector_store_manager
 from .llm_manager import llm_manager
-import importlib
-import inspect
-import logging
+
+logger = logging.getLogger(__name__)
 
 # --- Custom Docstore for ParentDocumentRetriever ---
 
@@ -111,8 +110,7 @@ class BasicRetrieverStrategy(RetrieverStrategy):
 
                 if unmapped_ids:
                     # Log a warning for dataset IDs not found in the config
-                    # In a real app, you'd use a proper logger
-                    print(f"Warning: The following shared dataset IDs were not found in shared_dbs.json: {unmapped_ids}")
+                    logger.warning(f"The following shared dataset IDs were not found in shared_dbs.json: {unmapped_ids}")
 
                 for collection_name, ids in collection_to_ids_map.items():
                     shared_vector_store = vector_store_manager.get_vector_store(collection_name)
@@ -123,7 +121,7 @@ class BasicRetrieverStrategy(RetrieverStrategy):
 
             except (FileNotFoundError, json.JSONDecodeError) as e:
                 # Log a warning if the shared DBs config is missing or invalid
-                print(f"Warning: Could not load or parse shared_dbs.json: {e}")
+                logger.warning(f"Could not load or parse shared_dbs.json: {e}")
 
         # 3. Build the final retriever
         if not retrievers:
@@ -237,36 +235,6 @@ class _BaseRetrieverAdapter(BaseRetriever):
             return self._delegate.get_relevant_documents(query)
 
 
-def _normalize_retriever_obj(obj: BaseRetriever) -> BaseRetriever:
-    """Ensure returned retriever(s) are proper Runnable/BaseRetriever instances.
-
-    If an EnsembleRetriever contains non-Runnable retrievers (e.g., MagicMocks),
-    wrap them in _BaseRetrieverAdapter so pydantic/type checks pass at runtime.
-    """
-    # Import locally to avoid circular issues with typing/runtime
-    from langchain.retrievers import EnsembleRetriever as _Ensemble
-
-    if isinstance(obj, _Ensemble):
-        new_retrievers = []
-        for r in obj.retrievers:
-            if isinstance(r, Runnable):
-                new_retrievers.append(r)
-            else:
-                new_retrievers.append(_BaseRetrieverAdapter(r))
-
-            # Create a shallow copy of EnsembleRetriever with normalized retrievers
-            # Ensure weights is a proper list (pydantic expects list[float])
-            weights = getattr(obj, "weights", None)
-            if weights is None:
-                weights = [1.0 / len(new_retrievers)] * len(new_retrievers)
-            return _Ensemble(retrievers=new_retrievers, weights=weights)
-
-    # Single retriever
-    if isinstance(obj, Runnable):
-        return obj
-    return _BaseRetrieverAdapter(obj)
-
-
 class StepBackPromptingRetrieverStrategy(RetrieverStrategy):
     def get_retriever(self, user_id: int, dataset_ids: Optional[List[int]] = None) -> BaseRetriever:
         # Use the basic retriever as the underlying search mechanism
@@ -287,12 +255,6 @@ Step-back question:"""
             question_gen_chain=question_gen_chain
         )
 
-
-import importlib
-import inspect
-import logging
-
-logger = logging.getLogger(__name__)
 
 # --- RetrieverManager --- 
 
