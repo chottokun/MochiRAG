@@ -221,3 +221,4 @@ test.txt
 
 # Generated shared DB config
 shared_dbs.json
+.vscode/settings.json
