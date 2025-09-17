@@ -15,19 +15,33 @@ Recommended tags
 
 Local build & push
 
-1. Build locally (development):
+This workflow uses the `Makefile` to simplify building and pushing images.
 
-   make build-backend
-   make build-frontend
+1.  **Build Local Images:**
+    First, build the images you want to deploy. This will create images tagged with `:local`.
 
-2. Push an image to GHCR (example):
+    ```bash
+    # Build the backend image
+    make build-backend
 
-   TAG=sha-$(git rev-parse --short HEAD) \
-     OWNER=your-username \
-     REPO=your-repo \
-     IMAGE=mochirag-backend \
-     REGISTRY=ghcr.io \
-     ./scripts/push-image.sh
+    # Build the frontend image
+    make build-frontend
+    ```
+
+2.  **Push Images to a Registry:**
+    Next, use the `push-*` targets to tag the local images and push them to your container registry.
+
+    You must set the `TAG` environment variable. You can also override `REGISTRY`, `OWNER`, and `REPO` if needed.
+
+    ```bash
+    # Example: Push the backend image with a specific tag
+    export TAG=v1.2.3
+    make push-backend
+
+    # Example: Push the frontend image with a tag based on the git commit
+    export TAG=sha-$(git rev-parse --short HEAD)
+    make push-frontend
+    ```
 
 CI (GitHub Actions)
 

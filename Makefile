@@ -13,11 +13,11 @@ build-frontend:
 	docker build --progress=plain -f Dockerfile.frontend -t $(FRONTEND_IMAGE):local .
 
 push-backend:
-	docker build -f Dockerfile.backend -t $(BACKEND_IMAGE):$(TAG) .
+	docker tag $(BACKEND_IMAGE):local $(BACKEND_IMAGE):$(TAG)
 	docker push $(BACKEND_IMAGE):$(TAG)
 
 push-frontend:
-	docker build -f Dockerfile.frontend -t $(FRONTEND_IMAGE):$(TAG) .
+	docker tag $(FRONTEND_IMAGE):local $(FRONTEND_IMAGE):$(TAG)
 	docker push $(FRONTEND_IMAGE):$(TAG)
 
 build-all: build-backend build-frontend

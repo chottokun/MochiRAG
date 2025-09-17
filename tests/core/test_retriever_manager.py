@@ -15,7 +15,8 @@ class TestBasicRetrieverStrategy(unittest.TestCase):
     def setUp(self):
         self.strategy = BasicRetrieverStrategy()
         self.user_id = 123
-        self.mock_retriever = MagicMock(spec=BaseRetriever)
+        # Create a mock that is NOT a Runnable instance, to test the adapter logic.
+        self.mock_retriever = MagicMock()
 
     @patch.object(vector_store_manager, 'get_vector_store')
     @patch.object(config_manager, 'get_retriever_config')
@@ -55,7 +56,9 @@ class TestBasicRetrieverStrategy(unittest.TestCase):
         dataset_ids = [1, 2, 3]
         retriever = self.strategy.get_retriever(self.user_id, dataset_ids)
         self.assertNotIsInstance(retriever, EnsembleRetriever)
-        self.assertEqual(retriever, self.mock_retriever)
+        from core.retriever_manager import _BaseRetrieverAdapter
+        self.assertIsInstance(retriever, _BaseRetrieverAdapter)
+        self.assertEqual(retriever._delegate, self.mock_retriever)
 
     @patch.object(vector_store_manager, 'get_vector_store')
     @patch.object(config_manager, 'get_retriever_config')
@@ -67,17 +70,17 @@ class TestBasicRetrieverStrategy(unittest.TestCase):
         self.assertIsNotNone(retriever)
         mock_get_vector_store.assert_called_once_with(f"user_{self.user_id}")
 
-    @patch('builtins.print')
+    @patch('core.retriever_manager.logger.warning')
     @patch.object(vector_store_manager, 'get_vector_store')
     @patch.object(config_manager, 'get_retriever_config')
-    def test_invalid_shared_id_is_handled_gracefully(self, mock_get_config, mock_get_vector_store, mock_print):
+    def test_invalid_shared_id_is_handled_gracefully(self, mock_get_config, mock_get_vector_store, mock_logger_warning):
         mock_get_config.return_value.parameters.get.return_value = 5
         mock_get_vector_store.return_value.as_retriever.return_value = self.mock_retriever
         dataset_ids = [-1, -99] # -99 is invalid
         shared_dbs_json = '[{"id": -1, "collection_name": "shared_coll_1"}]'
         with patch("builtins.open", mock_open(read_data=shared_dbs_json)):
             self.strategy.get_retriever(self.user_id, dataset_ids)
-        mock_print.assert_called_once_with("Warning: The following shared dataset IDs were not found in shared_dbs.json: [-99]")
+        mock_logger_warning.assert_called_once_with("The following shared dataset IDs were not found in shared_dbs.json: [-99]")
 
     @patch.object(vector_store_manager, 'get_vector_store')
     @patch.object(config_manager, 'get_retriever_config')
