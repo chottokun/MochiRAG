@@ -31,7 +31,7 @@ embeddings:
 llms:
   # Role mappings: Define which provider configuration to use for a given role.
   roles:
-    main: gpt-4o
+    main: gemma3:4b-it-qat
     fast: gemma3:4b-it-qat
     # vision: gemini-1.5-pro # Example for future extension
 
