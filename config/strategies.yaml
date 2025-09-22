@@ -22,39 +22,45 @@ embeddings:
     model_name: "mahonzhan/all-MiniLM-L6-v2:latest"
     base_url: "http://localhost:11434"
 
+  ruri-v3-30m:
+    provider: openai_compatible
+    model_name: "cl-nagoya/ruri-v3-30m"
+    base_url: "http://embedding_api:8000/v1"
+
 # Large Language Models (LLM) configuration
 llms:
-  # Default LLM for chat and other tasks. Using a small, fast Gemma model.
-  gemma3:4b-it-qat:
-    provider: ollama  
-    model_name: "gemma3:4b-it-qat" # Using a standard name, as gemma3:4b-it-qat might be custom
-    base_url: "http://localhost:11434"
+  # Role mappings: Define which provider configuration to use for a given role.
+  roles:
+    main: gemma3:4b-it-qat
+    fast: gemma3:4b-it-qat
+    # vision: gemini-1.5-pro # Example for future extension
 
-  # --- OpenAI Configuration ---
-  # Replace with your actual OpenAI model and API key
-  gpt-4o:
-    provider: openai
-    model_name: "gpt-4o"
-    api_key: "YOUR_OPENAI_API_KEY" # Replace with your key or set OPENAI_API_KEY environment variable
-    temperature: 0.7
+  # Provider configurations: Define the settings for each individual model.
+  providers:
+    gemma3:4b-it-qat:
+      provider: ollama  
+      model_name: "gemma3:4b-it-qat"
+      base_url: "http://localhost:11434"
 
-  # --- Azure OpenAI Configuration ---
-  # Replace with your Azure deployment details
-  azure-gpt-4:
-    provider: azure
-    deployment_name: "YOUR_DEPLOYMENT_NAME"
-    azure_endpoint: "YOUR_AZURE_ENDPOINT" # e.g., https://your-resource.openai.azure.com/
-    api_version: "2024-02-01"
-    api_key: "YOUR_AZURE_API_KEY" # Replace with your key or set AZURE_OPENAI_API_KEY environment variable
-    temperature: 0.7
+    gpt-4o:
+      provider: openai
+      model_name: "gpt-4o"
+      api_key: "${OPENAI_API_KEY}" # Loaded from .env file
+      temperature: 0.7
 
-  # --- Google Gemini Configuration ---
-  # Replace with your Gemini model and API key
-  gemini-1.5-pro:
-    provider: gemini
-    model_name: "gemini-1.5-pro-latest"
-    api_key: "YOUR_GOOGLE_API_KEY" # Replace with your key or set GOOGLE_API_KEY environment variable
-    temperature: 0.7
+    azure-gpt-4:
+      provider: azure
+      deployment_name: "YOUR_DEPLOYMENT_NAME"
+      azure_endpoint: "YOUR_AZURE_ENDPOINT"
+      api_version: "2024-02-01"
+      api_key: "${AZURE_OPENAI_API_KEY}" # Loaded from .env file
+      temperature: 0.7
+
+    gemini-1.5-pro:
+      provider: gemini
+      model_name: "gemini-1.5-pro-latest"
+      api_key: "${GOOGLE_API_KEY}" # Loaded from .env file
+      temperature: 0.7
 
 # Retriever strategies configuration
 retrievers:

@@ -1,8 +1,1 @@
-[
-  {
-    "id": -1,
-    "name": "My Shared DB",
-    "description": "Shared database created from './shared_samples/'",
-    "collection_name": "shared_my_shared_db"
-  }
-]
+[]

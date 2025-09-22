@@ -45,6 +45,12 @@ packages = ["backend", "core", "config"]
 
 [tool.poetry]
 package-mode = false
+packages = [
+    { include = "backend" },
+    { include = "core" },
+    { include = "frontend" },
+    { include = "tests" },
+]
 
 [tool.poetry.scripts]
 start = "uvicorn backend.main:app --reload --port 8000"

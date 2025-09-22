@@ -23,6 +23,8 @@ services:
       - chroma
     ports:
       - "8000:8000" # backend uvicorn on host 8000
+    env_file:
+      - .env
     environment:
       # Let backend connect to chroma using service name 'chroma' and container port 8000
       - CHROMA_HOST=chroma
@@ -30,14 +32,29 @@ services:
       # If Ollama is running on the Docker host, set this to the host gateway so
       # the backend can reach it from inside the container.
       - OLLAMA_BASE_URL=http://172.17.0.1:11434
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://$${OLLAMA_BASE_URL#http://}/api/embed || (curl -fsS http://chroma:8000/api/v2/pre-flight-checks >/dev/null) || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 6
+      - PYTHONPATH=/app:/app/embedding_api/src
+    # healthcheck:
+    #   test: ["CMD-SHELL", "curl -fsS http://${OLLAMA_BASE_URL#http://}/api/embed || (curl -fsS http://chroma:8000/api/v2/pre-flight-checks >/dev/null) || exit 1"]
+    #   interval: 10s
+    #   timeout: 5s
+    #   retries: 6
     volumes:
       - ./:/app
+    working_dir: /app
     command: ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+  embedding_api:
+    build:
+      context: ./embedding_api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8002:8000" # host:container -> expose embedding API on host 8002
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   frontend:
     build:
