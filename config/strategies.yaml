@@ -22,6 +22,11 @@ embeddings:
     model_name: "mahonzhan/all-MiniLM-L6-v2:latest"
     base_url: "http://localhost:11434"
 
+  ruri-v3-30m:
+    provider: openai_compatible
+    model_name: "cl-nagoya/ruri-v3-30m"
+    base_url: "http://embedding_api:8000/v1"
+
 # Large Language Models (LLM) configuration
 llms:
   # Default LLM for chat and other tasks. Using a small, fast Gemma model.

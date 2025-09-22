@@ -1,12 +1,13 @@
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_ollama import OllamaEmbeddings
+from langchain_openai import OpenAIEmbeddings
 from typing import Dict, Union
 
 from .config_manager import config_manager
 
 class EmbeddingManager:
     _instance = None
-    _embedding_models: Dict[str, Union[HuggingFaceEmbeddings, OllamaEmbeddings]] = {}
+    _embedding_models: Dict[str, Union[HuggingFaceEmbeddings, OllamaEmbeddings, OpenAIEmbeddings]] = {}
 
     def __new__(cls, *args, **kwargs):
         if not cls._instance:
@@ -27,6 +28,12 @@ class EmbeddingManager:
                 self._embedding_models[name] = OllamaEmbeddings(
                     model=config.model_name,
                     base_url=config.base_url
+                )
+            elif config.provider == 'openai_compatible':
+                self._embedding_models[name] = OpenAIEmbeddings(
+                    model=config.model_name,
+                    base_url=config.base_url,
+                    api_key="dummy"  # The API doesn't require a key
                 )
             else:
                 raise ValueError(f"Unsupported embedding provider: {config.provider}")
