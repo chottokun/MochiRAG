@@ -104,3 +104,7 @@ retrievers:
     strategy_class: "DeepRAGStrategy"
     description: "Decomposes complex questions into a series of simpler subqueries to build a comprehensive answer."
     parameters: {}
+  ace:
+    strategy_class: "ACERetrieverStrategy"
+    description: "A self-evolving strategy that learns from interactions to improve context retrieval over time."
+    parameters: {}

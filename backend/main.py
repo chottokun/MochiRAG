@@ -1,4 +1,4 @@
-from fastapi import Depends, FastAPI, HTTPException, status, File, UploadFile
+from fastapi import Depends, FastAPI, HTTPException, status, File, UploadFile, BackgroundTasks
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from typing import List
@@ -14,6 +14,7 @@ from core.ingestion_service import ingestion_service
 from core.rag_chain_service import rag_chain_service
 from core.vector_store_manager import vector_store_manager
 from core.ingestion_service import EmbeddingServiceError
+from core.context_evolution_service import context_evolution_service
 
 # Create all database tables on startup
 models.Base.metadata.create_all(bind=engine)
@@ -309,6 +310,17 @@ def get_available_rag_strategies():
 @app.post("/chat/query/", response_model=schemas.QueryResponse)
 def query_rag_chain(
     query: schemas.QueryRequest,
+    background_tasks: BackgroundTasks,
     current_user: models.User = Depends(get_current_user)
 ):
-    return rag_chain_service.get_rag_response(query, user_id=current_user.id)
+    response = rag_chain_service.get_rag_response(query, user_id=current_user.id)
+
+    # After sending the response, evolve the context in the background
+    background_tasks.add_task(
+        context_evolution_service.evolve_context_from_interaction,
+        user_id=current_user.id,
+        question=query.query,
+        answer=response.answer
+    )
+
+    return response

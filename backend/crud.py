@@ -94,3 +94,23 @@ def get_parent_document(db: Session, doc_id: str):
 
 def mget_parent_documents(db: Session, doc_ids: List[str]):
     return db.query(models.ParentDocument).filter(models.ParentDocument.id.in_(doc_ids)).all()
+
+# --- EvolvedContext CRUD ---
+
+def create_evolved_context(db: Session, owner_id: int, content: str, topic: str):
+    db_context = models.EvolvedContext(
+        owner_id=owner_id,
+        content=content,
+        topic=topic
+    )
+    db.add(db_context)
+    db.commit()
+    db.refresh(db_context)
+    return db_context
+
+def get_evolved_contexts_by_topic(db: Session, owner_id: int, topic: str, limit: int = 5):
+    return db.query(models.EvolvedContext)\
+        .filter(models.EvolvedContext.owner_id == owner_id, models.EvolvedContext.topic == topic)\
+        .order_by(models.EvolvedContext.effectiveness_score.desc())\
+        .limit(limit)\
+        .all()
