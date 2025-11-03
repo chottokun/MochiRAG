@@ -160,7 +160,13 @@ class RAGChainService:
             logger.info(f"Generated RAG response: {result['answer'][:100]}..., Sources count: {len(result['sources'])}")
             
             sources = [Source(page_content=doc.page_content, metadata=doc.metadata) for doc in result['sources']]
-            return QueryResponse(answer=result['answer'], sources=sources)
+
+            # Check if the retriever was an ACERetriever and pass the topic along
+            topic = None
+            if hasattr(retriever, 'latest_topic'):
+                topic = retriever.latest_topic
+
+            return QueryResponse(answer=result['answer'], sources=sources, topic=topic)
 
         except Exception as e:
             logger.error(f"Error invoking RAG chain with strategy '{query.strategy}': {e}", exc_info=True)

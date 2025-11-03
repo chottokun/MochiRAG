@@ -33,7 +33,8 @@ class TestChatEndpoint(unittest.TestCase):
         # 1. Configure the mock for the RAG service response
         mock_response_data = {
             "answer": "The ACE strategy is a self-evolving mechanism.",
-            "source_documents": []
+            "source_documents": [],
+            "topic": "ACE Strategy"
         }
         mock_rag_response.return_value = MagicMock(**mock_response_data)
 
@@ -62,7 +63,8 @@ class TestChatEndpoint(unittest.TestCase):
         mock_evolve.assert_called_once_with(
             user_id=mock_user.id,
             question=request_payload["query"],
-            answer=mock_response_data["answer"]
+            answer=mock_response_data["answer"],
+            topic=mock_response_data["topic"]
         )
 
 if __name__ == '__main__':

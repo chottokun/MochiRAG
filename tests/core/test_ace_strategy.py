@@ -99,15 +99,13 @@ class TestContextEvolutionService(unittest.TestCase):
         service = ContextEvolutionService()
 
         # We now mock the chains directly to control their string output
-        mock_topic_chain = MagicMock(spec=Runnable)
-        mock_topic_chain.invoke.return_value = "ParentDocumentRetriever"
-        service.topic_gen_chain = mock_topic_chain
-
         mock_evolution_chain = MagicMock(spec=Runnable)
         mock_evolution_chain.invoke.return_value = "The key insight is that ParentDocumentRetriever uses small chunks for searching and large chunks for context."
         service.evolution_chain = mock_evolution_chain
 
-        service.evolve_context_from_interaction(user_id, question, answer)
+        # The topic is now passed into the service call
+        topic = "ParentDocumentRetriever"
+        service.evolve_context_from_interaction(user_id, question, answer, topic)
 
         # --- Assertions ---
         # 1. Verify that the CRUD function was called with the generated content

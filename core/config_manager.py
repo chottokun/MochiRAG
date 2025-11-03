@@ -47,6 +47,7 @@ class AppConfig(BaseModel):
     embeddings: Dict[str, EmbeddingConfig]
     llms: LLMStructureConfig
     retrievers: Dict[str, RetrieverStrategyConfig]
+    prompts: Optional[Dict[str, str]] = Field(default_factory=dict)
 
 # --- ConfigManager Singleton ---
 
@@ -137,6 +138,20 @@ class ConfigManager:
         if not self.config.vector_store:
             raise ValueError("Vector store configuration not found in strategies.yaml")
         return self.config.vector_store
+
+    def get_prompt(self, name: str, default: str = "") -> str:
+        """
+        Retrieves a prompt template from the configuration.
+
+        Args:
+            name (str): The name of the prompt to retrieve.
+            default (str): A fallback default prompt template if the requested
+                           one is not found in the config file.
+
+        Returns:
+            str: The prompt template.
+        """
+        return self.config.prompts.get(name, default)
 
 # Create a single, globally accessible instance of the ConfigManager
 config_manager = ConfigManager()

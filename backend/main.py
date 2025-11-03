@@ -315,12 +315,15 @@ def query_rag_chain(
 ):
     response = rag_chain_service.get_rag_response(query, user_id=current_user.id)
 
-    # After sending the response, evolve the context in the background
-    background_tasks.add_task(
-        context_evolution_service.evolve_context_from_interaction,
-        user_id=current_user.id,
-        question=query.query,
-        answer=response.answer
-    )
+    # If the ACE strategy was used, it will have returned a topic.
+    # Use this topic to evolve the context in the background.
+    if response.topic:
+        background_tasks.add_task(
+            context_evolution_service.evolve_context_from_interaction,
+            user_id=current_user.id,
+            question=query.query,
+            answer=response.answer,
+            topic=response.topic
+        )
 
     return response

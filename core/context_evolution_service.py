@@ -6,6 +6,7 @@ from langchain_core.output_parsers import StrOutputParser
 from backend import crud
 from backend.database import SessionLocal
 from .llm_manager import llm_manager
+from .config_manager import config_manager
 
 logger = logging.getLogger(__name__)
 
@@ -15,16 +16,8 @@ class ContextEvolutionService:
         self._setup_chains()
 
     def _setup_chains(self):
-        # Chain for generating the topic
-        topic_template = """Based on the following user question, identify the main topic or entity in one or two words.
-Your answer should be concise and suitable for use as a database search key.
-Original question: {question}
-Topic:"""
-        topic_prompt = PromptTemplate.from_template(topic_template)
-        self.topic_gen_chain = topic_prompt | self.llm | StrOutputParser()
-
         # Chain for generating the evolved context
-        evolution_template = """You are an expert in synthesizing knowledge. Based on the user's question and the provided answer, formulate a single, concise, and reusable insight. This insight should be a piece of general knowledge that could help answer similar questions more effectively in the future.
+        default_evolution_template = """You are an expert in synthesizing knowledge. Based on the user's question and the provided answer, formulate a single, concise, and reusable insight. This insight should be a piece of general knowledge that could help answer similar questions more effectively in the future.
 
 Do not repeat the question or the answer. Focus on extracting the core principle or strategy.
 
@@ -35,22 +28,21 @@ Provided Answer:
 "{answer}"
 
 Concise Insight:"""
-        evolution_prompt = PromptTemplate.from_template(evolution_template)
+        template = config_manager.get_prompt("ace_evolution", default=default_evolution_template)
+        evolution_prompt = PromptTemplate.from_template(template)
         self.evolution_chain = evolution_prompt | self.llm | StrOutputParser()
 
-    def evolve_context_from_interaction(self, user_id: int, question: str, answer: str):
+    def evolve_context_from_interaction(self, user_id: int, question: str, answer: str, topic: str):
         """
         Generates and saves an evolved context from a Q&A interaction.
         """
-        logger.info(f"Starting context evolution for user {user_id} based on question: '{question[:50]}...'")
+        logger.info(f"Starting context evolution for user {user_id} on topic '{topic}'")
 
-        # 1. Generate the topic for storage and retrieval
-        topic = self.topic_gen_chain.invoke({"question": question})
-        if not topic:
-            logger.warning("Topic generation failed. Aborting context evolution.")
+        if not all([question, answer, topic]):
+            logger.warning("Missing question, answer, or topic. Aborting context evolution.")
             return
 
-        # 2. Generate the new insight (the evolved context)
+        # Generate the new insight (the evolved context)
         evolved_content = self.evolution_chain.invoke({"question": question, "answer": answer})
         if not evolved_content:
             logger.warning("Context evolution failed to generate content. Aborting.")

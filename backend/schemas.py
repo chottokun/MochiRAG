@@ -79,3 +79,4 @@ class Source(BaseModel):
 class QueryResponse(BaseModel):
     answer: str
     sources: List[Source]
+    topic: Optional[str] = None

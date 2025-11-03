@@ -108,3 +108,36 @@ retrievers:
     strategy_class: "ACERetrieverStrategy"
     description: "A self-evolving strategy that learns from interactions to improve context retrieval over time."
     parameters: {}
+
+# --------------------------------------------------------------------------
+# Prompt Templates
+# --------------------------------------------------------------------------
+# This section defines the prompt templates used by various RAG strategies.
+# You can customize these prompts to tailor the behavior of the LLM.
+prompts:
+  step_back: |
+    You are an expert at world knowledge. I am going to ask you a question. Your job is to formulate a single, more general question that captures the essence of the original question. Frame the question from the perspective of a historian or a researcher.
+    Original question: {question}
+    Step-back question:
+  ace_topic: |
+    Based on the following user question, identify the main topic or entity in one or two words.
+    Your answer should be concise and suitable for use as a database search key.
+    Examples:
+    - Question: "How does the ParentDocumentRetriever work in MochiRAG?" -> Answer: "ParentDocumentRetriever"
+    - Question: "Tell me about ensemble retrievers" -> Answer: "EnsembleRetriever"
+    - Question: "What are the key features?" -> Answer: "Features"
+
+    Original question: {question}
+    Topic:
+  ace_evolution: |
+    You are an expert in synthesizing knowledge. Based on the user's question and the provided answer, formulate a single, concise, and reusable insight. This insight should be a piece of general knowledge that could help answer similar questions more effectively in the future.
+
+    Do not repeat the question or the answer. Focus on extracting the core principle or strategy.
+
+    User Question:
+    "{question}"
+
+    Provided Answer:
+    "{answer}"
+
+    Concise Insight:
