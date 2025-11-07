@@ -32,7 +32,8 @@ dependencies = [
     "langchain-chroma>=0.1.2",
     "langchain-openai>=0.1.17",
     "langchain-google-genai>=1.0.6",
-    "click>=8.1.7"
+    "click>=8.1.7",
+    "langchain-docling>=0.0.3"
 ]
 
 [build-system]
