@@ -242,9 +242,10 @@ class StepBackPromptingRetrieverStrategy(RetrieverStrategy):
         llm = llm_manager.get_llm()
 
         # Prompt for generating the step-back question
-        template = """You are an expert at world knowledge. I am going to ask you a question. Your job is to formulate a single, more general question that captures the essence of the original question. Frame the question from the perspective of a historian or a researcher.
+        default_step_back_template = """You are an expert at world knowledge. I am going to ask you a question. Your job is to formulate a single, more general question that captures the essence of the original question. Frame the question from the perspective of a historian or a researcher.
 Original question: {question}
 Step-back question:"""
+        template = config_manager.get_prompt("step_back", default=default_step_back_template)
         prompt = PromptTemplate.from_template(template)
 
         # Chain to generate the question
@@ -253,6 +254,87 @@ Step-back question:"""
         return StepBackRetriever(
             retriever=base_retriever,
             question_gen_chain=question_gen_chain
+        )
+
+
+class ACERetriever(BaseRetriever):
+    """
+    A retriever that combines results from a base retriever with
+    insights from the EvolvedContext database.
+    """
+    base_retriever: BaseRetriever
+    user_id: int
+    topic_gen_chain: Runnable
+    latest_topic: str = ""
+
+    def _get_relevant_documents(
+        self, query: str, *, run_manager: CallbackManagerForRetrieverRun
+    ) -> List[Document]:
+        # 1. Get standard documents from the base retriever
+        base_docs = self.base_retriever.get_relevant_documents(
+            query, callbacks=run_manager.get_child()
+        )
+
+        # 2. Generate a topic from the user's query and store it
+        topic = self.topic_gen_chain.invoke(
+            {"question": query},
+            config={"callbacks": run_manager.get_child()}
+        )
+        self.latest_topic = topic.strip()
+        logger.info(f"Generated topic '{topic}' for ACE retrieval.")
+
+        # 3. Retrieve evolved contexts from the database
+        db = SessionLocal()
+        try:
+            evolved_contexts = crud.get_evolved_contexts_by_topic(
+                db, owner_id=self.user_id, topic=topic.strip()
+            )
+        finally:
+            db.close()
+
+        # 4. Convert them to LangChain Documents
+        evolved_docs = []
+        for context in evolved_contexts:
+            doc = Document(
+                page_content=context.content,
+                metadata={
+                    "source": "evolved_context",
+                    "id": context.id,
+                    "score": context.effectiveness_score,
+                },
+            )
+            evolved_docs.append(doc)
+
+        logger.info(f"Retrieved {len(evolved_docs)} documents from evolved contexts.")
+
+        # 5. Combine and return the documents (evolved docs first for priority)
+        return evolved_docs + base_docs
+
+
+class ACERetrieverStrategy(RetrieverStrategy):
+    def get_retriever(self, user_id: int, dataset_ids: Optional[List[int]] = None) -> BaseRetriever:
+        base_retriever = BasicRetrieverStrategy().get_retriever(user_id, dataset_ids)
+        llm = llm_manager.get_llm()
+
+        # Prompt for generating a concise topic/keyword for DB lookup
+        default_ace_topic_template = """Based on the following user question, identify the main topic or entity in one or two words.
+Your answer should be concise and suitable for use as a database search key.
+Examples:
+- Question: "How does the ParentDocumentRetriever work in MochiRAG?" -> Answer: "ParentDocumentRetriever"
+- Question: "Tell me about ensemble retrievers" -> Answer: "EnsembleRetriever"
+- Question: "What are the key features?" -> Answer: "Features"
+
+Original question: {question}
+Topic:"""
+        template = config_manager.get_prompt("ace_topic", default=default_ace_topic_template)
+        prompt = PromptTemplate.from_template(template)
+
+        topic_gen_chain = prompt | llm | StrOutputParser()
+
+        return ACERetriever(
+            base_retriever=base_retriever,
+            user_id=user_id,
+            topic_gen_chain=topic_gen_chain
         )
 
 

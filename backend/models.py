@@ -13,6 +13,7 @@ class User(Base):
 
     datasets = relationship("Dataset", back_populates="owner", cascade="all, delete-orphan")
     data_sources = relationship("DataSource", back_populates="owner", cascade="all, delete-orphan")
+    evolved_contexts = relationship("EvolvedContext", back_populates="owner", cascade="all, delete-orphan")
 
 class Dataset(Base):
     __tablename__ = "datasets"
@@ -51,3 +52,15 @@ class ParentDocument(Base):
     data_source_id = Column(Integer, ForeignKey("data_sources.id"), nullable=False)
     
     data_source = relationship("DataSource", back_populates="parent_documents")
+
+class EvolvedContext(Base):
+    __tablename__ = "evolved_contexts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    content = Column(String, nullable=False)
+    topic = Column(String, index=True, nullable=True) # Can be used for targeted retrieval
+    effectiveness_score = Column(Integer, default=0, nullable=False) # Simple scoring
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    owner = relationship("User", back_populates="evolved_contexts")
