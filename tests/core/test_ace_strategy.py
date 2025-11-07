@@ -8,7 +8,7 @@ from langchain_core.callbacks import CallbackManagerForRetrieverRun
 from langchain_core.retrievers import BaseRetriever
 
 # Modules to test
-from core.retriever_manager import ACERetrieverStrategy, _BaseRetrieverAdapter
+from core.retriever_manager import ACERetrieverStrategy
 from core.context_evolution_service import ContextEvolutionService
 
 # Mock data

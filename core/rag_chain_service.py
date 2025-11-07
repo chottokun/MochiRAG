@@ -7,7 +7,7 @@ from langchain_core.prompts import PromptTemplate
 from langchain_core.runnables import RunnableLambda, RunnableParallel, RunnablePassthrough
 
 from .llm_manager import llm_manager
-from .retriever_manager import retriever_manager
+from .retriever_manager import retriever_manager, ACERetriever
 from .deep_rag_strategy import DeepRAGStrategy
 from backend.schemas import QueryRequest, QueryResponse, Source
 
@@ -163,7 +163,7 @@ class RAGChainService:
 
             # Check if the retriever was an ACERetriever and pass the topic along
             topic = None
-            if hasattr(retriever, 'latest_topic'):
+            if isinstance(retriever, ACERetriever):
                 topic = retriever.latest_topic
 
             return QueryResponse(answer=result['answer'], sources=sources, topic=topic)

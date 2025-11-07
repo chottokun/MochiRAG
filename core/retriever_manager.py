@@ -29,6 +29,20 @@ from .llm_manager import llm_manager
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_STEP_BACK_TEMPLATE = """You are an expert at world knowledge. I am going to ask you a question. Your job is to formulate a single, more general question that captures the essence of the original question. Frame the question from the perspective of a historian or a researcher.
+Original question: {question}
+Step-back question:"""
+
+DEFAULT_ACE_TOPIC_TEMPLATE = """Based on the following user question, identify the main topic or entity in one or two words.
+Your answer should be concise and suitable for use as a database search key.
+Examples:
+- Question: "How does the ParentDocumentRetriever work in MochiRAG?" -> Answer: "ParentDocumentRetriever"
+- Question: "Tell me about ensemble retrievers" -> Answer: "EnsembleRetriever"
+- Question: "What are the key features?" -> Answer: "Features"
+
+Original question: {question}
+Topic:"""
+
 # --- Custom Docstore for ParentDocumentRetriever ---
 
 class SQLDocStore(BaseStore[str, Document]):
@@ -242,10 +256,7 @@ class StepBackPromptingRetrieverStrategy(RetrieverStrategy):
         llm = llm_manager.get_llm()
 
         # Prompt for generating the step-back question
-        default_step_back_template = """You are an expert at world knowledge. I am going to ask you a question. Your job is to formulate a single, more general question that captures the essence of the original question. Frame the question from the perspective of a historian or a researcher.
-Original question: {question}
-Step-back question:"""
-        template = config_manager.get_prompt("step_back", default=default_step_back_template)
+        template = config_manager.get_prompt("step_back", default=DEFAULT_STEP_BACK_TEMPLATE)
         prompt = PromptTemplate.from_template(template)
 
         # Chain to generate the question
@@ -317,16 +328,7 @@ class ACERetrieverStrategy(RetrieverStrategy):
         llm = llm_manager.get_llm()
 
         # Prompt for generating a concise topic/keyword for DB lookup
-        default_ace_topic_template = """Based on the following user question, identify the main topic or entity in one or two words.
-Your answer should be concise and suitable for use as a database search key.
-Examples:
-- Question: "How does the ParentDocumentRetriever work in MochiRAG?" -> Answer: "ParentDocumentRetriever"
-- Question: "Tell me about ensemble retrievers" -> Answer: "EnsembleRetriever"
-- Question: "What are the key features?" -> Answer: "Features"
-
-Original question: {question}
-Topic:"""
-        template = config_manager.get_prompt("ace_topic", default=default_ace_topic_template)
+        template = config_manager.get_prompt("ace_topic", default=DEFAULT_ACE_TOPIC_TEMPLATE)
         prompt = PromptTemplate.from_template(template)
 
         topic_gen_chain = prompt | llm | StrOutputParser()
