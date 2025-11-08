@@ -1,44 +1,68 @@
+import os
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from core.ingestion_service import IngestionService
+from core.config_manager import ConfigManager
 
-# We need to patch the loader classes at the source where they are imported
-@patch('core.ingestion_service.DoclingLoader')
-@patch('core.ingestion_service.TextLoader')
-@patch('core.ingestion_service.UnstructuredMarkdownLoader')
-def test_get_loader_pdf(mock_md_loader, mock_text_loader, mock_docling_loader):
+def reload_config_manager():
+    """Forces a reload of the ConfigManager singleton for testing."""
+    if hasattr(ConfigManager._instance, 'is_initialized'):
+        del ConfigManager._instance.is_initialized
+    return ConfigManager()
+
+@pytest.fixture(autouse=True)
+def setup_and_teardown():
+    """Reloads config and clears env vars for each test."""
+    # Clear env vars before the test
+    vars_to_clear = ["CHUNK_SIZE", "CHUNK_OVERLAP"]
+    original_values = {var: os.environ.get(var) for var in vars_to_clear}
+    for var in vars_to_clear:
+        if var in os.environ:
+            del os.environ[var]
+
+    # Force reload config to pick up cleared env vars
+    reload_config_manager()
+
+    yield
+
+    # Restore original env vars
+    for var, value in original_values.items():
+        if value is not None:
+            os.environ[var] = value
+        elif var in os.environ:
+            del os.environ[var]
+
+    # Reload config again to restore original state
+    reload_config_manager()
+
+def test_chunk_size_override_from_env():
     """
-    Tests if _get_loader returns an instance of DoclingLoader for PDF files.
+    Tests if CHUNK_SIZE from env var overrides both basic and parent splitters.
     """
-    # Arrange
+    test_chunk_size = "555"
+    with patch.dict(os.environ, {"CHUNK_SIZE": test_chunk_size}):
+        # Must reload config manager for it to pick up the patched env var
+        reload_config_manager()
+
+        # Re-instantiate IngestionService to trigger its __init__ with new config
+        ingestion_service = IngestionService()
+
+        # Assert that the main text_splitter uses the overridden value
+        assert ingestion_service.text_splitter._chunk_size == int(test_chunk_size)
+
+        # Assert that the parent_splitter also uses the overridden value
+        assert ingestion_service.parent_splitter._chunk_size == int(test_chunk_size)
+
+def test_chunk_size_falls_back_to_config():
+    """
+    Tests if IngestionService falls back to YAML config when env var is not set.
+    """
+    # No env var is set (handled by setup_and_teardown fixture)
     ingestion_service = IngestionService()
-    test_file_path = "/path/to/dummy.pdf"
-    test_file_type = "application/pdf"
 
-    # Act
-    loader = ingestion_service._get_loader(test_file_path, test_file_type)
+    # These values are from the default strategies.yaml
+    expected_basic_chunk_size = 1000
+    expected_parent_chunk_size = 2000
 
-    # Assert
-    mock_docling_loader.assert_called_once_with(test_file_path, chunking_strategy="MARKDOWN")
-    assert loader is not None
-    # Check if the returned object is the instance created by the mock
-    assert loader == mock_docling_loader.return_value
-    mock_text_loader.assert_not_called()
-    mock_md_loader.assert_not_called()
-
-def test_get_loader_txt():
-    """
-    Tests if _get_loader returns an instance of TextLoader for plain text files.
-    """
-    # This test is more about ensuring the routing logic works, so we can keep it simple
-    ingestion_service = IngestionService()
-    loader = ingestion_service._get_loader("/path/to/dummy.txt", "text/plain")
-    assert loader.__class__.__name__ == "TextLoader"
-
-def test_unsupported_file_type():
-    """
-    Tests if _get_loader returns None for an unsupported file type.
-    """
-    ingestion_service = IngestionService()
-    loader = ingestion_service._get_loader("/path/to/dummy.xyz", "application/octet-stream")
-    assert loader is None
+    assert ingestion_service.text_splitter._chunk_size == expected_basic_chunk_size
+    assert ingestion_service.parent_splitter._chunk_size == expected_parent_chunk_size

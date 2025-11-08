@@ -105,20 +105,6 @@ class ConfigManager:
                     if isinstance(v, dict) and v.get('provider') == 'ollama':
                         v['base_url'] = ollama_base
 
-        # Allow environment variables to override ingestion chunking parameters
-        chunk_size = os.getenv('CHUNK_SIZE')
-        chunk_overlap = os.getenv('CHUNK_OVERLAP')
-        if chunk_size and 'retrievers' in yaml_data and 'basic' in yaml_data['retrievers']:
-            try:
-                yaml_data['retrievers']['basic']['parameters']['chunk_size'] = int(chunk_size)
-            except (ValueError, KeyError):
-                pass  # Ignore if casting fails or structure is unexpected
-        if chunk_overlap and 'retrievers' in yaml_data and 'basic' in yaml_data['retrievers']:
-            try:
-                yaml_data['retrievers']['basic']['parameters']['chunk_overlap'] = int(chunk_overlap)
-            except (ValueError, KeyError):
-                pass
-
         # Allow environment variables to override the default LLM provider and model for the "main" role
         llm_provider = os.getenv('LLM_PROVIDER')
         llm_model_name = os.getenv('LLM_MODEL_NAME')
@@ -197,6 +183,26 @@ class ConfigManager:
             str: The prompt template.
         """
         return self.config.prompts.get(name, default)
+
+    def get_chunk_size(self) -> Optional[int]:
+        """Reads CHUNK_SIZE from environment variables."""
+        size = os.getenv("CHUNK_SIZE")
+        if size:
+            try:
+                return int(size)
+            except (ValueError, TypeError):
+                return None
+        return None
+
+    def get_chunk_overlap(self) -> Optional[int]:
+        """Reads CHUNK_OVERLAP from environment variables."""
+        overlap = os.getenv("CHUNK_OVERLAP")
+        if overlap:
+            try:
+                return int(overlap)
+            except (ValueError, TypeError):
+                return None
+        return None
 
 # Create a single, globally accessible instance of the ConfigManager
 config_manager = ConfigManager()

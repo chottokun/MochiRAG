@@ -50,7 +50,20 @@ poetry shell
 # JWTトークンの署名に使用する秘密鍵。任意の長い文字列を設定してください。
 SECRET_KEY="your-super-secret-and-long-string-for-jwt"
 
-# --- 任意 (使用するLLMに応じて設定) ---
+# --- LLMとIngestionの挙動を設定 (任意) ---
+# デフォルトで使用するLLMプロバイダーを指定します (例: "ollama", "openai", "azure", "gemini")
+LLM_PROVIDER="ollama"
+
+# 使用するモデル名 (例: "llama3", "gpt-4o")
+LLM_MODEL_NAME="llama3"
+
+# ドキュメント取り込み時のチャンクサイズ
+CHUNK_SIZE=1000
+
+# チャンク間のオーバーラップ文字数
+CHUNK_OVERLAP=200
+
+# --- 各LLMプロバイダーのAPIキーなど (使用するものに応じて設定) ---
 # Ollama
 OLLAMA_BASE_URL=http://localhost:11434
 
