@@ -1,4 +1,5 @@
-from langchain_community.document_loaders import PyPDFLoader, TextLoader, UnstructuredMarkdownLoader
+from langchain_community.document_loaders import TextLoader, UnstructuredMarkdownLoader
+from langchain_docling import DoclingLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from typing import List
 import uuid
@@ -23,26 +24,30 @@ class IngestionService:
         default_child_chunk_size = 400
         default_child_chunk_overlap = 100
 
+        # Get chunking parameters from environment variables first, then config, then defaults.
+        env_chunk_size = config_manager.get_chunk_size()
+        env_chunk_overlap = config_manager.get_chunk_overlap()
+
         # Attempt to read retriever parameters from configuration (if provided)
         try:
             retriever_cfg = config_manager.get_retriever_config('basic')
             params = retriever_cfg.parameters or {}
-            chunk_size = int(params.get('chunk_size', default_chunk_size))
-            chunk_overlap = int(params.get('chunk_overlap', default_chunk_overlap))
+            chunk_size = env_chunk_size or int(params.get('chunk_size', default_chunk_size))
+            chunk_overlap = env_chunk_overlap or int(params.get('chunk_overlap', default_chunk_overlap))
         except Exception:
-            chunk_size = default_chunk_size
-            chunk_overlap = default_chunk_overlap
+            chunk_size = env_chunk_size or default_chunk_size
+            chunk_overlap = env_chunk_overlap or default_chunk_overlap
 
         try:
             parent_cfg = config_manager.get_retriever_config('parent_document')
             pparams = parent_cfg.parameters or {}
-            parent_chunk_size = int(pparams.get('parent_chunk_size', default_parent_chunk_size))
-            parent_chunk_overlap = int(pparams.get('parent_chunk_overlap', default_parent_chunk_overlap))
+            parent_chunk_size = env_chunk_size or int(pparams.get('parent_chunk_size', default_parent_chunk_size))
+            parent_chunk_overlap = env_chunk_overlap or int(pparams.get('parent_chunk_overlap', default_parent_chunk_overlap))
             child_chunk_size = int(pparams.get('child_chunk_size', default_child_chunk_size))
             child_chunk_overlap = int(pparams.get('child_chunk_overlap', default_child_chunk_overlap))
         except Exception:
-            parent_chunk_size = default_parent_chunk_size
-            parent_chunk_overlap = default_parent_chunk_overlap
+            parent_chunk_size = env_chunk_size or default_parent_chunk_size
+            parent_chunk_overlap = env_chunk_overlap or default_parent_chunk_overlap
             child_chunk_size = default_child_chunk_size
             child_chunk_overlap = default_child_chunk_overlap
 
@@ -144,7 +149,7 @@ class IngestionService:
 
     def _get_loader(self, file_path: str, file_type: str):
         if file_type == 'application/pdf':
-            return PyPDFLoader(file_path)
+            return DoclingLoader(file_path, chunking_strategy="MARKDOWN")
         elif file_type == 'text/plain':
             return TextLoader(file_path)
         elif file_type == 'text/markdown':
@@ -163,7 +168,7 @@ class IngestionService:
         for file_path in file_paths:
             # Simple file type detection based on extension
             if file_path.endswith(".pdf"):
-                loader = PyPDFLoader(file_path)
+                loader = DoclingLoader(file_path, chunking_strategy="MARKDOWN")
             elif file_path.endswith(".txt"):
                 loader = TextLoader(file_path)
             elif file_path.endswith(".md"):

@@ -9,6 +9,9 @@ MochiRAG is a multi-tenant, feature-rich Retrieval-Augmented Generation (RAG) ap
 
 - **Secure Multi-Tenancy**: User data is completely isolated. A user can only access the documents and datasets they own.
 - **Pluggable RAG Strategies**: Go beyond simple vector search. MochiRAG supports multiple advanced RAG strategies out-of-the-box, including `MultiQuery`, `ParentDocument`, and `StepBackPrompting`.
+- **Advanced Document Processing**: Utilizes the `Docling` library for robust parsing of PDFs, including complex layouts, tables, and OCR for scanned documents.
+- **Configurable Ingestion**: Control document chunk size and overlap directly from your `.env` file for fine-tuned performance.
+- **Flexible LLM Selection**: Easily switch between LLM providers (Ollama, OpenAI, Azure, Gemini) and models via environment variables.
 - **Extensible Framework**: Easily add new RAG strategies and LLM providers through simple configuration changes.
 - **Shared Knowledge Bases**: Administrators can create read-only "shared databases" accessible to all users, perfect for common knowledge bases.
 - **Developer-Friendly**: Comes with a comprehensive test suite, a `docker-compose` setup for easy local development, and extensive documentation.

@@ -105,6 +105,37 @@ class ConfigManager:
                     if isinstance(v, dict) and v.get('provider') == 'ollama':
                         v['base_url'] = ollama_base
 
+        # Allow environment variables to override the default LLM provider and model for the "main" role
+        llm_provider = os.getenv('LLM_PROVIDER')
+        llm_model_name = os.getenv('LLM_MODEL_NAME')
+        if llm_provider and llm_model_name:
+            env_provider_key = "env_default_llm"
+            if 'llms' not in yaml_data:
+                yaml_data['llms'] = {'roles': {}, 'providers': {}}
+            if 'providers' not in yaml_data['llms']:
+                yaml_data['llms']['providers'] = {}
+            if 'roles' not in yaml_data['llms']:
+                yaml_data['llms']['roles'] = {}
+
+            provider_config = {
+                'provider': llm_provider.lower(),
+                'model_name': llm_model_name
+            }
+
+            provider = llm_provider.lower()
+            if provider == 'openai':
+                provider_config['api_key'] = os.getenv('OPENAI_API_KEY', '')
+            elif provider == 'azure':
+                provider_config['api_key'] = os.getenv('AZURE_OPENAI_API_KEY', '')
+                provider_config['azure_endpoint'] = os.getenv('AZURE_OPENAI_ENDPOINT', '')
+            elif provider == 'gemini':
+                provider_config['api_key'] = os.getenv('GOOGLE_API_KEY', '')
+            elif provider == 'ollama':
+                provider_config['base_url'] = os.getenv('OLLAMA_BASE_URL', '')
+
+            yaml_data['llms']['providers'][env_provider_key] = provider_config
+            yaml_data['llms']['roles']['main'] = env_provider_key
+
         self.config = AppConfig(**yaml_data)
         self.is_initialized = True
 
@@ -152,6 +183,26 @@ class ConfigManager:
             str: The prompt template.
         """
         return self.config.prompts.get(name, default)
+
+    def get_chunk_size(self) -> Optional[int]:
+        """Reads CHUNK_SIZE from environment variables."""
+        size = os.getenv("CHUNK_SIZE")
+        if size:
+            try:
+                return int(size)
+            except (ValueError, TypeError):
+                return None
+        return None
+
+    def get_chunk_overlap(self) -> Optional[int]:
+        """Reads CHUNK_OVERLAP from environment variables."""
+        overlap = os.getenv("CHUNK_OVERLAP")
+        if overlap:
+            try:
+                return int(overlap)
+            except (ValueError, TypeError):
+                return None
+        return None
 
 # Create a single, globally accessible instance of the ConfigManager
 config_manager = ConfigManager()

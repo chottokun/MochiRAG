@@ -13,6 +13,7 @@
 - **シングルトンパターン**: アプリケーション全体で唯一のインスタンスを保証し、LLMクライアントの生成を一度だけに限定することで、リソースを効率的に使用します。
 - **動的インスタンス化**: `config/strategies.yaml` の `llms` セクションの設定に基づき、要求されたLLMプロバイダー (`Ollama`, `OpenAI`, `Azure OpenAI`, `Gemini`) に対応するLangChainの `Chat` モデルを動的にインスタンス化します。
 - **キャッシュ**: 一度生成されたLLMクライアントは内部でキャッシュされ、後続の呼び出しでは再利用されます。
+- **環境変数による設定上書き**: `.env` ファイルに `LLM_PROVIDER` と `LLM_MODEL_NAME` を設定することで、`strategies.yaml` の設定を上書きし、デフォルトで使用するLLMを簡単に切り替えることができます。
 
 ### 2.2. 設定例
 
@@ -41,13 +42,38 @@ llms:
     api_key: "YOUR_AZURE_API_KEY"
 ```
 
-## 3. RAG検索戦略の管理 (`RetrieverManager`)
+## 3. ドキュメントの取り込みと解析 (`IngestionService`)
+
+`core/ingestion_service.py` に実装されている `IngestionService` は、アップロードされたファイルの解析、テキストの分割（チャンキング）、そしてベクトルストアへの登録を担当します。
+
+### 3.1. 高度なPDF解析
+
+MochiRAGは、標準的なPDFパーサーの代わりに `DoclingLoader` (`langchain-docling`) を採用しています。これにより、以下のような高度な機能が実現されます。
+
+- **レイアウト認識**: 段落、リスト、ヘッダー・フッターなどの文書構造を維持したままテキストを抽出します。
+- **テーブル解析**: PDF内のテーブルをMarkdown形式のテーブルとして正確に抽出します。
+- **OCR処理**: スキャンされたドキュメントや画像に含まれる文字を自動的に認識し、テキスト化します。
+
+このアプローチにより、文書の構造情報が失われにくくなり、RAGの検索精度と回答品質の向上に貢献します。
+
+### 3.2. チャンク設定のカスタマイズ
+
+ドキュメントをベクトル化する際のチャンクサイズとオーバーラップは、RAGの性能に大きな影響を与えます。MochiRAGでは、これらの値を `.env` ファイルで簡単に設定できます。
+
+- **`CHUNK_SIZE`**: 各チャンクのおおよその文字数。
+- **`CHUNK_OVERLAP`**: 隣接するチャンク間で重複させる文字数。
+
+これらの環境変数を設定すると、`config/strategies.yaml` のデフォルト値が上書きされ、実験やチューニングが容易になります。
+
+---
+
+## 4. RAG検索戦略の管理 (`RetrieverManager`)
 
 `core/retriever_manager.py` に実装されている `RetrieverManager` は、`config/strategies.yaml` の設定に基づき、様々なRAG検索戦略を動的に構築・提供します。以下に、現在実装されている各戦略の詳細を解説します。
 
 ---
 
-### 3.1. `BasicRetrieverStrategy` (基本戦略)
+### 4.1. `BasicRetrieverStrategy` (基本戦略)
 
 - **概要**: 最も基本的なベクトル検索戦略。ユーザーが選択した複数のデータソース（個人用・共有）を横断して同時に検索します。
 - **動作原理**:
@@ -59,7 +85,7 @@ llms:
 
 ---
 
-### 3.2. `MultiQueryRetrieverStrategy` (複数クエリ生成戦略)
+### 4.2. `MultiQueryRetrieverStrategy` (複数クエリ生成戦略)
 
 - **概要**: ユーザーの質問をLLMが分析し、異なる角度からの複数の検索クエリを自動生成して検索を実行する戦略です。
 - **動作原理**:
@@ -71,7 +97,7 @@ llms:
 
 ---
 
-### 3.3. `ContextualCompressionRetrieverStrategy` (コンテキスト圧縮戦略)
+### 4.3. `ContextualCompressionRetrieverStrategy` (コンテキスト圧縮戦略)
 
 - **概要**: 一旦取得したドキュメントの内容をLLMが要約・抽出し、質問に直接関連する部分だけを最終的なコンテキストとして利用する戦略です。
 - **動作原理**:
@@ -83,7 +109,7 @@ llms:
 
 ---
 
-### 3.4. `ParentDocumentRetrieverStrategy` (親子ドキュメント戦略)
+### 4.4. `ParentDocumentRetrieverStrategy` (親子ドキュメント戦略)
 
 - **概要**: ドキュメントを大きな「親チャンク」と、検索対象となる小さな「子チャンク」に分割して管理する戦略です。検索は子チャンクで行い、回答生成には親チャンクの完全なコンテキストを利用します。
 - **動作原理**:
@@ -95,7 +121,7 @@ llms:
 
 ---
 
-### 3.5. `StepBackPromptingRetrieverStrategy` (一歩下がった質問戦略)
+### 4.5. `StepBackPromptingRetrieverStrategy` (一歩下がった質問戦略)
 
 - **概要**: ユーザーの具体的な質問から一歩引いた、より一般的・抽象的な質問をLLMに生成させ、その質問で検索を行う戦略です。
 - **動作原理**:
@@ -107,7 +133,7 @@ llms:
 
 ---
 
-### 3.6. `HyDE` (Hypothetical Document Embeddings) Strategy
+### 4.6. `HyDE` (Hypothetical Document Embeddings) Strategy
 
 **注意**: HyDE戦略に関連する実装は、LangChainのバージョン間の互換性問題により、現在コードベースから**削除されています**。
 
@@ -115,7 +141,7 @@ HyDEは、質問に対する「架空の回答」をまずLLMに生成させ、�
 
 ---
 
-### 3.7. `ACERetrieverStrategy` (自己進化型コンテキスト戦略)
+### 4.7. `ACERetrieverStrategy` (自己進化型コンテキスト戦略)
 
 - **概要**: Agentic Context Engineering (ACE) のコンセプトに基づき、システムがユーザーとの対話から学び、知識を継続的に進化させていく自己改善型の検索戦略です。過去の対話から生成された「進化したコンテキスト」を、将来の検索に活用します。本戦略を含む、プロンプト駆動型RAG戦略のカスタマイズ方法については、[こちらのガイド](./../guides/customizing_prompts.md)を参照してください。
 - **動作原理**:
