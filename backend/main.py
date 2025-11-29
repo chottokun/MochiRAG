@@ -15,6 +15,7 @@ from core.rag_chain_service import rag_chain_service
 from core.vector_store_manager import vector_store_manager
 from core.ingestion_service import EmbeddingServiceError
 from core.context_evolution_service import context_evolution_service
+from core.config_manager import config_manager
 
 # Create all database tables on startup
 models.Base.metadata.create_all(bind=engine)
@@ -298,8 +299,6 @@ def delete_document_from_dataset(
         raise HTTPException(status_code=404, detail="Document not found")
 
     return deleted_doc
-
-from core.config_manager import config_manager
 
 @app.get("/chat/strategies/")
 def get_available_rag_strategies():

@@ -1,17 +1,15 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, List, Optional, Sequence, Tuple
 import json
 import importlib
 import inspect
 import logging
 
 from langchain.retrievers import EnsembleRetriever
-from langchain.chains import LLMChain
 from langchain.retrievers import (ContextualCompressionRetriever,
                                   MultiQueryRetriever)
 from langchain.retrievers.document_compressors import LLMChainExtractor
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_chroma import Chroma
 from langchain_core.callbacks import CallbackManagerForRetrieverRun
 from langchain_core.documents import Document
 from langchain_core.prompts import PromptTemplate

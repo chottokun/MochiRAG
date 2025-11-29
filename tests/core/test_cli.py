@@ -1,7 +1,7 @@
 import pytest
 import json
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 from click.testing import CliRunner
 
 # Assume cli.py will be created at the root

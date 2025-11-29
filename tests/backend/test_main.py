@@ -2,7 +2,6 @@ import pytest
 import os
 from unittest.mock import MagicMock
 from httpx import AsyncClient, ASGITransport
-from fastapi import Depends
 from sqlalchemy.orm import Session
 
 from backend.main import app, get_db
