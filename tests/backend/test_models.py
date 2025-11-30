@@ -1,6 +1,5 @@
 import pytest
 from sqlalchemy import inspect, Integer, String
-from sqlalchemy.orm import Mapped
 
 def test_user_model_exists():
     """

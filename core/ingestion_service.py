@@ -1,5 +1,6 @@
 from langchain_community.document_loaders import TextLoader, UnstructuredMarkdownLoader
 from langchain_docling import DoclingLoader
+from langchain_docling.loader import ExportType
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from typing import List
 import uuid
@@ -149,7 +150,7 @@ class IngestionService:
 
     def _get_loader(self, file_path: str, file_type: str):
         if file_type == 'application/pdf':
-            return DoclingLoader(file_path, chunking_strategy="MARKDOWN")
+            return DoclingLoader(file_path, export_type=ExportType.MARKDOWN)
         elif file_type == 'text/plain':
             return TextLoader(file_path)
         elif file_type == 'text/markdown':
@@ -168,7 +169,7 @@ class IngestionService:
         for file_path in file_paths:
             # Simple file type detection based on extension
             if file_path.endswith(".pdf"):
-                loader = DoclingLoader(file_path, chunking_strategy="MARKDOWN")
+                loader = DoclingLoader(file_path, export_type=ExportType.MARKDOWN)
             elif file_path.endswith(".txt"):
                 loader = TextLoader(file_path)
             elif file_path.endswith(".md"):

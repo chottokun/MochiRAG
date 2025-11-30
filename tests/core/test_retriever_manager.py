@@ -1,14 +1,11 @@
 import unittest
-from unittest.mock import patch, MagicMock, mock_open, call
+from unittest.mock import patch, MagicMock, mock_open
 
 # Import the class and instances we need to test and mock
 from langchain.retrievers import EnsembleRetriever
-from langchain_core.retrievers import BaseRetriever
-from langchain_core.language_models.llms import BaseLLM
 from core.retriever_manager import BasicRetrieverStrategy
 from core.config_manager import config_manager
 from core.vector_store_manager import vector_store_manager
-from core.llm_manager import llm_manager
 
 class TestBasicRetrieverStrategy(unittest.TestCase):
     # --- All tests for BasicRetrieverStrategy are here ---

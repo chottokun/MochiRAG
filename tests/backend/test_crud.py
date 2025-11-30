@@ -2,7 +2,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from backend import crud, models, schemas
+from backend import crud, schemas
 from backend.database import Base
 
 # --- Test Database Setup ---

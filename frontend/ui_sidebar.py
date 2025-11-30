@@ -145,26 +145,3 @@ def render_sidebar():
         for key in list(st.session_state.keys()):
             del st.session_state[key]
         st.rerun()
-
-
-def render_sidebar():
-    st.sidebar.title("MochiRAG Control Panel")
-
-    # --- Settings ---
-    st.sidebar.header("Settings")
-    st.session_state.api_timeout = st.number_input(
-        "API Timeout (seconds)", 
-        min_value=5, 
-        max_value=300, 
-        value=st.session_state.get("api_timeout", 30), 
-        step=5
-    )
-
-    render_data_management()
-
-    # --- Logout ---
-    st.sidebar.header("") # Spacer
-    if st.sidebar.button("Logout"):
-        for key in list(st.session_state.keys()):
-            del st.session_state[key]
-        st.rerun()

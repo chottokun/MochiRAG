@@ -9,7 +9,7 @@ from langchain_core.documents import Document
 class VectorStoreManager:
     def __init__(self):
         self.client: Optional[chromadb.Client] = None
-        self.embedding_function = embedding_manager.get_embedding_model()
+        self.embedding_function = embedding_manager.get_embedding_model("ruri-v3-30m")
 
     def initialize_client(self):
         """
