@@ -3,11 +3,14 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from typing import List
 import uuid
 import time
+import logging
 
 from .vector_store_manager import vector_store_manager
 from .config_manager import config_manager
 from backend import crud
 from backend.database import SessionLocal
+
+logger = logging.getLogger(__name__)
 
 class EmbeddingServiceError(Exception):
     """Raised when the embedding service (e.g. Ollama) is unreachable or fails."""
@@ -63,7 +66,7 @@ class IngestionService:
         """Basic ingestion process."""
         loader = self._get_loader(file_path, file_type)
         if not loader:
-            print(f"No suitable loader for file type: {file_type}")
+            logger.warning(f"No suitable loader for file type: {file_type}")
             return
 
         docs = loader.load()
@@ -98,7 +101,7 @@ class IngestionService:
         """Ingestion process for the ParentDocumentRetriever."""
         loader = self._get_loader(file_path, file_type)
         if not loader:
-            print(f"No suitable loader for file type: {file_type}")
+            logger.warning(f"No suitable loader for file type: {file_type}")
             return
 
         docs = loader.load()
@@ -169,7 +172,7 @@ class IngestionService:
             elif file_path.endswith(".md"):
                 loader = UnstructuredMarkdownLoader(file_path)
             else:
-                print(f"Skipping unsupported file type: {file_path}")
+                logger.info(f"Skipping unsupported file type: {file_path}")
                 continue
 
             docs = loader.load()
@@ -185,7 +188,7 @@ class IngestionService:
             all_chunks.extend(chunks)
 
         if not all_chunks:
-            print("No documents were processed.")
+            logger.info("No documents were processed.")
             return
 
         # Use the same retry logic as the user-specific ingestion
@@ -194,7 +197,7 @@ class IngestionService:
         for attempt in range(1, max_retries + 1):
             try:
                 vector_store_manager.add_documents(collection_name, all_chunks)
-                print(f"Successfully added {len(all_chunks)} chunks to collection '{collection_name}'.")
+                logger.info(f"Successfully added {len(all_chunks)} chunks to collection '{collection_name}'.")
                 break
             except Exception as e:
                 if attempt == max_retries:

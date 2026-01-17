@@ -2,8 +2,11 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_ollama import OllamaEmbeddings
 from langchain_openai import OpenAIEmbeddings
 from typing import Dict, Union
+import logging
 
 from .config_manager import config_manager
+
+logger = logging.getLogger(__name__)
 
 class EmbeddingManager:
     _instance = None
@@ -17,7 +20,7 @@ class EmbeddingManager:
     def get_embedding_model(self, name: str = "all-MiniLM-L6-v2") -> Union[HuggingFaceEmbeddings, OllamaEmbeddings]:
         """Loads a HuggingFace or Ollama embedding model, caching it for reuse."""
         if name not in self._embedding_models:
-            print(f"Loading embedding model: {name}")
+            logger.info(f"Loading embedding model: {name}")
             config = config_manager.get_embedding_config(name)
             
             if config.provider == 'huggingface':
@@ -37,7 +40,7 @@ class EmbeddingManager:
                 )
             else:
                 raise ValueError(f"Unsupported embedding provider: {config.provider}")
-            print("Embedding model loaded.")
+            logger.info("Embedding model loaded.")
         
         return self._embedding_models[name]
 

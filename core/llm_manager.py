@@ -3,9 +3,11 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_ollama import ChatOllama
 from langchain_openai import AzureChatOpenAI, ChatOpenAI
 from typing import Dict, Optional
+import logging
 
 from .config_manager import config_manager
 
+logger = logging.getLogger(__name__)
 
 class LLMManager:
     """
@@ -36,7 +38,7 @@ class LLMManager:
         cache_key = config.model_name if config.model_name else role
 
         if cache_key not in self._llms:
-            print(f"LLM for role '{role}' (model: '{cache_key}') not found in cache. Instantiating...")
+            logger.info(f"LLM for role '{role}' (model: '{cache_key}') not found in cache. Instantiating...")
             provider = getattr(config, 'provider', '').lower()
 
             if provider == 'ollama':
@@ -67,7 +69,7 @@ class LLMManager:
             else:
                 raise ValueError(f"Unsupported LLM provider: '{config.provider}'")
 
-            print(f"LLM '{cache_key}' ({provider}) instantiated and cached.")
+            logger.info(f"LLM '{cache_key}' ({provider}) instantiated and cached.")
 
         return self._llms[cache_key]
 

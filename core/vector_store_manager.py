@@ -1,10 +1,13 @@
 import chromadb
 from langchain_chroma import Chroma
 from typing import List, Optional
+import logging
 
 from .embedding_manager import embedding_manager
 from .config_manager import config_manager
 from langchain_core.documents import Document
+
+logger = logging.getLogger(__name__)
 
 class VectorStoreManager:
     def __init__(self):
@@ -19,19 +22,19 @@ class VectorStoreManager:
         if self.client is not None:
             return
 
-        print("Initializing ChromaDB client...")
+        logger.info("Initializing ChromaDB client...")
         config = config_manager.get_vector_store_config()
 
         if config.mode == 'http':
-            print(f"Connecting to ChromaDB server at {config.host}:{config.port}...")
+            logger.info(f"Connecting to ChromaDB server at {config.host}:{config.port}...")
             self.client = chromadb.HttpClient(host=config.host, port=config.port)
         elif config.mode == 'persistent':
-            print(f"Initializing persistent ChromaDB at path: {config.path}")
+            logger.info(f"Initializing persistent ChromaDB at path: {config.path}")
             self.client = chromadb.PersistentClient(path=config.path)
         else:
             raise ValueError(f"Unsupported ChromaDB mode: {config.mode}")
 
-        print("ChromaDB client initialized successfully.")
+        logger.info("ChromaDB client initialized successfully.")
 
     def _get_client(self) -> chromadb.Client:
         if self.client is None:
@@ -50,7 +53,7 @@ class VectorStoreManager:
         """Add documents to a specific collection."""
         vector_store = self.get_vector_store(collection_name)
         vector_store.add_documents(documents)
-        print(f"{len(documents)} documents added to collection '{collection_name}'.")
+        logger.info(f"{len(documents)} documents added to collection '{collection_name}'.")
 
 # Create a single, globally accessible instance
 vector_store_manager = VectorStoreManager()
