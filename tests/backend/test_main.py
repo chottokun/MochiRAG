@@ -5,7 +5,8 @@ from httpx import AsyncClient, ASGITransport
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
-from backend.main import app, get_db
+from backend.main import app
+from backend.dependencies import get_db
 from backend import schemas, crud, security
 
 # Mock the get_db dependency
@@ -13,8 +14,12 @@ def override_get_db():
     db = MagicMock(spec=Session)
     yield db
 
-app.dependency_overrides[get_db] = override_get_db
 
+@pytest.fixture(autouse=True)
+def setup_overrides():
+    app.dependency_overrides[get_db] = override_get_db
+    yield
+    app.dependency_overrides.clear()
 
 @pytest.mark.anyio
 async def test_create_user(monkeypatch):
@@ -82,7 +87,7 @@ async def test_read_datasets_for_user_includes_shared_dbs(monkeypatch):
     Test that the /users/me/datasets/ endpoint returns both the user's own
     datasets and the shared datasets defined in shared_dbs.json.
     """
-    from backend.main import get_current_user
+    from backend.dependencies import get_current_user
     from backend import models
     import json
 

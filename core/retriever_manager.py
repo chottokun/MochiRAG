@@ -26,22 +26,9 @@ from backend.database import SessionLocal
 from .config_manager import config_manager
 from .vector_store_manager import vector_store_manager
 from .llm_manager import llm_manager
+from .prompts import DEFAULT_STEP_BACK_TEMPLATE, DEFAULT_ACE_TOPIC_TEMPLATE
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_STEP_BACK_TEMPLATE = """You are an expert at world knowledge. I am going to ask you a question. Your job is to formulate a single, more general question that captures the essence of the original question. Frame the question from the perspective of a historian or a researcher.
-Original question: {question}
-Step-back question:"""
-
-DEFAULT_ACE_TOPIC_TEMPLATE = """Based on the following user question, identify the main topic or entity in one or two words.
-Your answer should be concise and suitable for use as a database search key.
-Examples:
-- Question: "How does the ParentDocumentRetriever work in MochiRAG?" -> Answer: "ParentDocumentRetriever"
-- Question: "Tell me about ensemble retrievers" -> Answer: "EnsembleRetriever"
-- Question: "What are the key features?" -> Answer: "Features"
-
-Original question: {question}
-Topic:"""
 
 # --- Custom Docstore for ParentDocumentRetriever ---
 

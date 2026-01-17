@@ -6,20 +6,9 @@ from backend import crud
 from backend.database import SessionLocal
 from .llm_manager import llm_manager
 from .config_manager import config_manager
+from .prompts import DEFAULT_ACE_EVOLUTION_TEMPLATE
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_EVOLUTION_TEMPLATE = """You are an expert in synthesizing knowledge. Based on the user's question and the provided answer, formulate a single, concise, and reusable insight. This insight should be a piece of general knowledge that could help answer similar questions more effectively in the future.
-
-Do not repeat the question or the answer. Focus on extracting the core principle or strategy.
-
-User Question:
-"{question}"
-
-Provided Answer:
-"{answer}"
-
-Concise Insight:"""
 
 
 class ContextEvolutionService:
@@ -29,7 +18,7 @@ class ContextEvolutionService:
 
     def _setup_chains(self):
         # Chain for generating the evolved context
-        template = config_manager.get_prompt("ace_evolution", default=DEFAULT_EVOLUTION_TEMPLATE)
+        template = config_manager.get_prompt("ace_evolution", default=DEFAULT_ACE_EVOLUTION_TEMPLATE)
         evolution_prompt = PromptTemplate.from_template(template)
         self.evolution_chain = evolution_prompt | self.llm | StrOutputParser()
 

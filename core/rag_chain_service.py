@@ -3,55 +3,15 @@ from typing import List, Optional, Dict, Any
 
 from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import PromptTemplate
 from langchain_core.runnables import RunnableLambda, RunnableParallel, RunnablePassthrough
 
 from .llm_manager import llm_manager
 from .retriever_manager import retriever_manager, ACERetriever
 from .deep_rag_strategy import DeepRAGStrategy
+from .prompts import DEFAULT_RAG_PROMPT, CONVERSATIONAL_RAG_PROMPT
 from backend.schemas import QueryRequest, QueryResponse, Source
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-DEFAULT_RAG_PROMPT_TEMPLATE_STR = """
-You are an assistant for question-answering tasks.
-Use the following pieces of retrieved context to answer the question.
-If you don't know the answer, just say that you don't know.
-Try to keep the answer concise and informative.
-When you use information from the context, cite the source using the metadata (e.g., "According to [document_name from metadata], ...").
-The 'document_name' can be found in the 'original_filename' or 'data_source_id' fields of the source metadata.
-
-Context:
-{context}
-
-Question: {question}
-
-Answer:
-"""
-default_rag_prompt = PromptTemplate(template=DEFAULT_RAG_PROMPT_TEMPLATE_STR, input_variables=["context", "question"])
-
-CONVERSATIONAL_RAG_PROMPT_TEMPLATE_STR = """
-You are an assistant for question-answering tasks.
-Use the following pieces of retrieved context and the chat history to answer the question.
-If you don't know the answer, just say that you don't know.
-Try to keep the answer concise and informative.
-When you use information from the context, cite the source using the metadata (e.g., "According to [document_name from metadata], ...").
-
-Chat History:
-{chat_history}
-
-Context:
-{context}
-
-Question: {question}
-
-Answer:
-"""
-conversational_rag_prompt = PromptTemplate(
-    template=CONVERSATIONAL_RAG_PROMPT_TEMPLATE_STR,
-    input_variables=["chat_history", "context", "question"]
-)
 
 
 def format_docs_with_sources(docs: List[Document]) -> str:
@@ -114,10 +74,10 @@ class RAGChainService:
 
         # Select prompt and format history
         if history_dicts:
-            prompt = conversational_rag_prompt
+            prompt = CONVERSATIONAL_RAG_PROMPT
             formatted_chat_history = "\n".join([f"{msg['role']}: {msg['content']}" for msg in history_dicts])
         else:
-            prompt = default_rag_prompt
+            prompt = DEFAULT_RAG_PROMPT
             formatted_chat_history = ""
 
         # Base chain for document retrieval and formatting

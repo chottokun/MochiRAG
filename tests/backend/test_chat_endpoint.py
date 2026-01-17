@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from backend.main import app
 
 # We need to mock the dependencies that perform external calls
-from backend.main import get_current_user
+from backend.dependencies import get_current_user
 from core.rag_chain_service import rag_chain_service
 from core.context_evolution_service import context_evolution_service
 
@@ -19,12 +19,14 @@ mock_user.email = "test@example.com"
 def override_get_current_user():
     return mock_user
 
-app.dependency_overrides[get_current_user] = override_get_current_user
-
 class TestChatEndpoint(unittest.TestCase):
 
     def setUp(self):
+        app.dependency_overrides[get_current_user] = override_get_current_user
         self.client = TestClient(app)
+
+    def tearDown(self):
+        app.dependency_overrides.clear()
 
     @patch.object(rag_chain_service, 'get_rag_response')
     @patch.object(context_evolution_service, 'evolve_context_from_interaction')

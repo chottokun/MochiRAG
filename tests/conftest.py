@@ -1,0 +1,8 @@
+import pytest
+from backend.main import app
+
+@pytest.fixture(autouse=True)
+def clear_dependency_overrides():
+    app.dependency_overrides.clear()
+    yield
+    app.dependency_overrides.clear()
