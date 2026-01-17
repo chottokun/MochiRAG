@@ -52,7 +52,8 @@ The `ConfigManager` was refactored to use `pydantic-settings` (v2), providing a 
 ## 5. Testing and Verification
 
 - **API Integration Tests**: Added a new test suite (`tests/backend/test_api_v2.py`) that covers the entire user lifecycle.
-- **Configuration Tests**: Added `tests/core/test_config_manager_v2.py` to verify the new settings logic.
+- **Configuration Tests**: Added `tests/core/test_config_manager_v2.py` to verify the new settings logic and environment variable overrides.
+- **Core Service Unit Tests**: Added `tests/core/test_ingestion_service_v2.py` and `tests/core/test_retriever_manager_v2.py` to verify retry logic and strategy selection.
 - **Regression Testing**: All existing tests were updated to work with the new structure and verified to pass.
 
 ## 6. How to Run Tests
